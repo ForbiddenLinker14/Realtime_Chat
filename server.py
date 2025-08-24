@@ -137,13 +137,14 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 @app.get("/sitemap.xml")
 def sitemap():
     urls = [
-        "https://realtime-chat-bwns.onrender.com/",
-        "https://realtime-chat-bwns.onrender.com/about.html",
-        "https://realtime-chat-bwns.onrender.com/privacy-policy.html",
-        "https://realtime-chat-bwns.onrender.com/terms-of-service.html",
-        "https://realtime-chat-bwns.onrender.com/disclaimer.html",
-        "https://realtime-chat-bwns.onrender.com/contact.html",
-        "https://realtime-chat-bwns.onrender.com/blog.html",
+        
+        "https://realtime-chat-1mv3.onrender.com/",
+        "https://realtime-chat-1mv3.onrender.com/about.html",
+        "https://realtime-chat-1mv3.onrender.com/privacy-policy.html",
+        "https://realtime-chat-1mv3.onrender.com/terms-of-service.html",
+        "https://realtime-chat-1mv3.onrender.com/disclaimer.html",
+        "https://realtime-chat-1mv3.onrender.com/contact.html",
+        "https://realtime-chat-1mv3.onrender.com/blog.html",
     ]
 
     xml_content = '<?xml version="1.0" encoding="UTF-8"?>'
@@ -162,7 +163,7 @@ def robots():
     content = """User-agent: *
 Allow: /
 
-Sitemap: https://realtime-chat-bwns.onrender.com/sitemap.xml
+Sitemap: https://realtime-chat-1mv3.onrender.com/sitemap.xml
 """
     return Response(content=content, media_type="text/plain")
 
