@@ -1,3 +1,7 @@
+                                              <!-- ওঁ নমো 
+
+সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ -->
+
 <!DOCTYPE html>
 <html lang="en">
 
@@ -878,6 +882,31 @@
       // document.getElementById("intro").style.display = "block";
       // document.getElementById("messages").style.display = "none";
     }
+
+    // Handle offline
+    window.addEventListener("offline", () => {
+      if (socket && socket.connected) {
+        socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
+        socket.disconnect(); // close cleanly
+      }
+    });
+
+    // Handle online + reconnect
+    let reconnectTimer;
+    window.addEventListener("online", () => {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        if (socket && !socket.connected && currentRoom && currentName) {
+          socket.connect();
+          socket.emit("manual_reconnect", {
+            room: currentRoom,
+            sender: currentName,
+            lastTs: lastPersistedTs || null, // resume only missed messages
+          });
+        }
+      }, 300);
+    });
+
   </script>
 </body>
 

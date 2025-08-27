@@ -1,18 +1,23 @@
+#                                                  ওঁ নমো 
+                                                 
+# সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ
+
 import sqlite3
-from datetime import datetime
-from fastapi import FastAPI, Response
+from datetime import datetime, timezone
+from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 import socketio
 import socket
 import os
 import asyncio
-from datetime import datetime, timezone
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+import aiohttp
 
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: {sid: username} }
+DISCONNECT_TIMERS = {}  # sid -> asyncio.Task (delayed disconnect broadcast)
+FORCE_DISCONNECT = set()  # track sids that called manual_disconnect
 
 
 # ---------------- Database ----------------
@@ -124,50 +129,48 @@ def clear_room(room):
 sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
-    max_http_buffer_size=5 * 1024 * 1024,
+    max_http_buffer_size=10 * 1024 * 1024,
+    ping_interval=3,  # send ping every 3s
+    ping_timeout=5,  # if no pong reply within 5s -> disconnect
 )
 app = FastAPI()
-
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 app.mount("/socket.io", sio_app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-@app.get("/sitemap.xml")
-def sitemap():
-    urls = [
-        
-        "https://realtime-chat-1mv3.onrender.com/",
-        "https://realtime-chat-1mv3.onrender.com/about.html",
-        "https://realtime-chat-1mv3.onrender.com/privacy-policy.html",
-        "https://realtime-chat-1mv3.onrender.com/terms-of-service.html",
-        "https://realtime-chat-1mv3.onrender.com/disclaimer.html",
-        "https://realtime-chat-1mv3.onrender.com/contact.html",
-        "https://realtime-chat-1mv3.onrender.com/blog.html",
+# ---------------- Helper ----------------
+async def broadcast_users(room):
+    users = [
+        {"name": username, "status": "online"}
+        for sid, username in ROOM_USERS.get(room, {}).items()
     ]
-
-    xml_content = '<?xml version="1.0" encoding="UTF-8"?>'
-    xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-
-    for url in urls:
-        xml_content += f"<url><loc>{url}</loc></url>"
-
-    xml_content += "</urlset>"
-
-    return Response(content=xml_content, media_type="application/xml")
+    await sio.emit("users_update", {"room": room, "users": users}, room=room)
 
 
-@app.get("/robots.txt")
-def robots():
-    content = """User-agent: *
-Allow: /
+async def handle_disconnect(sid, reason="disconnected"):
+    for room, users in list(ROOM_USERS.items()):
+        if sid in users:
+            username = users[sid]
+            del users[sid]
+            if not users:
+                del ROOM_USERS[room]
+            await broadcast_users(room)
+            await sio.emit(
+                "message",
+                {
+                    "sender": "System",
+                    "text": f"{username} {reason}.",
+                    "ts": datetime.now(timezone.utc).isoformat(),
+                },
+                room=room,
+            )
+    if sid in DISCONNECT_TIMERS:
+        del DISCONNECT_TIMERS[sid]
 
-Sitemap: https://realtime-chat-1mv3.onrender.com/sitemap.xml
-"""
-    return Response(content=content, media_type="text/plain")
 
-
+# ---------------- Routes ----------------
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
     clear_room(room)
@@ -181,35 +184,20 @@ async def clear_messages(room: str):
 async def destroy_room(room: str):
     clear_room(room)
     DESTROYED_ROOMS.add(room)
-
-    # remove users in this room
     if room in ROOM_USERS:
         del ROOM_USERS[room]
-
     await sio.emit(
         "clear",
         {"room": room, "message": "Room destroyed. All messages cleared."},
         room=room,
     )
     await sio.emit("room_destroyed", {"room": room}, room=room)
-
-    # kick everyone out
     namespace = "/"
     if namespace in sio.manager.rooms and room in sio.manager.rooms[namespace]:
         sids = list(sio.manager.rooms[namespace][room])
         for sid in sids:
             await sio.leave_room(sid, room, namespace=namespace)
-
     return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
-
-
-# ---------------- Helper ----------------
-async def broadcast_users(room):
-    """Send users only for the specific room"""
-    users = []
-    for sid, username in ROOM_USERS.get(room, {}).items():
-        users.append({"name": username, "status": "online"})
-    await sio.emit("users_update", {"room": room, "users": users}, room=room)
 
 
 # ---------------- Socket.IO Events ----------------
@@ -218,24 +206,22 @@ async def join(sid, data):
     room = data["room"]
     sender = data["sender"]
     last_ts = data.get("lastTs")
+
+    if sid in DISCONNECT_TIMERS:  # cancel delayed disconnect
+        DISCONNECT_TIMERS[sid].cancel()
+        del DISCONNECT_TIMERS[sid]
+
     if room in DESTROYED_ROOMS:
         DESTROYED_ROOMS.remove(room)
-    await sio.enter_room(sid, room)
 
+    await sio.enter_room(sid, room)
     if room not in ROOM_USERS:
         ROOM_USERS[room] = {}
     ROOM_USERS[room][sid] = sender
 
     await broadcast_users(room)
 
-    deleted = cleanup_old_messages()
-    if deleted > 0:
-        await sio.emit(
-            "cleanup",
-            {"message": f"{deleted} old messages (48h+) were removed."},
-            room=room,
-        )
-
+    # send missed messages
     for sender_, text, filename, mimetype, filedata, ts in load_messages(room):
         if last_ts and ts <= last_ts:
             continue
@@ -314,18 +300,12 @@ async def leave(sid, data):
     room = data["room"]
     sender = data["sender"]
     await sio.leave_room(sid, room)
-
     if room in ROOM_USERS and sid in ROOM_USERS[room]:
         del ROOM_USERS[room][sid]
-
-    # delete room if empty
-    if room in ROOM_USERS and not ROOM_USERS[room]:
-        del ROOM_USERS[room]
-
+        if not ROOM_USERS[room]:
+            del ROOM_USERS[room]
     await broadcast_users(room)
-
     await sio.emit("left_room", {"room": room}, to=sid)
-
     await sio.emit(
         "message",
         {
@@ -338,20 +318,43 @@ async def leave(sid, data):
 
 
 @sio.event
+async def manual_disconnect(sid, data):
+    FORCE_DISCONNECT.add(sid)  # mark this sid
+    await handle_disconnect(sid, reason="disconnected (manual)")
+    if sid in DISCONNECT_TIMERS:
+        DISCONNECT_TIMERS[sid].cancel()
+        del DISCONNECT_TIMERS[sid]
+
+
+@sio.event
+async def manual_reconnect(sid, data):
+    await join(
+        sid,
+        {"room": data["room"], "sender": data["sender"], "lastTs": data.get("lastTs")},
+    )
+
+
+@sio.event
 async def disconnect(sid):
-    for room, users in list(ROOM_USERS.items()):
-        if sid in users:
-            username = users[sid]
-            del users[sid]
-            if not users:
-                del ROOM_USERS[room]
-            await broadcast_users(room)
-    print(f"Client {sid} disconnected")
+    # skip if we already handled via manual_disconnect
+    if sid in FORCE_DISCONNECT:
+        FORCE_DISCONNECT.remove(sid)
+        return
+
+    async def delayed_disconnect():
+        await asyncio.sleep(0.5)
+        await handle_disconnect(sid, reason="disconnected")
+
+    DISCONNECT_TIMERS[sid] = asyncio.create_task(delayed_disconnect())
 
 
 # ---------------- Background Cleanup ----------------
+import aiohttp
+
+
+# ---------------- Background Cleanup + KeepAlive ----------------
 @app.on_event("startup")
-async def schedule_cleanup():
+async def startup_tasks():
     async def loop_cleanup():
         while True:
             deleted = cleanup_old_messages()
@@ -360,12 +363,25 @@ async def schedule_cleanup():
                     "cleanup",
                     {"message": f"{deleted} old messages (48h+) were removed."},
                 )
-            await asyncio.sleep(3600)
+            await asyncio.sleep(3600)  # run every hour
 
+    async def ping_self():
+        url = "https://realtime-chat-1mv3.onrender.com"  # <-- replace with your Render URL
+        while True:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as resp:
+                        print(f"[KeepAlive] Pinged {url} - {resp.status}")
+            except Exception as e:
+                print(f"[KeepAlive] Error: {e}")
+            await asyncio.sleep(300)  # ping every 5 minutes
+
+    # schedule both tasks in background
     asyncio.create_task(loop_cleanup())
+    asyncio.create_task(ping_self())
 
 
-# serve icons and manifest.json
+# ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
 
 
@@ -384,7 +400,6 @@ def ads():
     return FileResponse("ads.txt", media_type="text/plain")
 
 
-# Serve everything in BASE_DIR (so /index.html, /style.css, etc. work)
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
 
 # ---------------- Run Server ----------------
@@ -393,11 +408,6 @@ if __name__ == "__main__":
 
     init_db()
     migrate_db()
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("PRAGMA table_info(messages)")
-    print("📂 Messages table columns:", [row[1] for row in c.fetchall()])
-    conn.close()
     local_ip = socket.gethostbyname(socket.gethostname())
     print("🚀 Server running at:")
     print("   ➤ Local:   http://127.0.0.1:8000")
