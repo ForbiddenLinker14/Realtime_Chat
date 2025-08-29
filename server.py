@@ -320,7 +320,7 @@ async def leave(sid, data):
 @sio.event
 async def manual_disconnect(sid, data):
     FORCE_DISCONNECT.add(sid)  # mark this sid
-    await handle_disconnect(sid, reason="disconnected (manual)")
+    await handle_disconnect(sid, reason="disconnected")
     if sid in DISCONNECT_TIMERS:
         DISCONNECT_TIMERS[sid].cancel()
         del DISCONNECT_TIMERS[sid]
