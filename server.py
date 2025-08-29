@@ -12,6 +12,7 @@ import os
 import asyncio
 from fastapi.staticfiles import StaticFiles
 import aiohttp
+from fastapi.responses import Response
 # ---------------- Globals ----------------
 
 DB_PATH = "chat.db"
@@ -391,9 +392,6 @@ async def manifest():
 async def service_worker():
     return FileResponse(os.path.join(BASE_DIR, "sw.js"))
 
-
-from fastapi.responses import Response
-import os
 
 @app.get("/sitemap.xml")
 def sitemap():
