@@ -641,47 +641,42 @@
   document.getElementById("input-area").style.display = "none";
   document.getElementById("chat-container").style.display = "none";
 
-  // 🔄 Restore session on load
-  window.addEventListener("load", () => {
-    const savedName = localStorage.getItem("chat_name");
-    const savedRoom = localStorage.getItem("chat_room");
-    if (savedName && savedRoom) {
-      document.getElementById("name").value = savedName;
-      document.getElementById("room").value = savedRoom;
-      joinRoom(); // auto rejoin
-    }
-  });
-
   function joinRoom() {
     currentName = document.getElementById("name").value.trim();
     currentRoom = document.getElementById("room").value.trim();
     if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
     if (joinedRooms.has(currentRoom)) { alert("You are already in this room!"); return; }
 
-    if (socket && socket.connected) socket.disconnect();
+    // 🔥 Save to localStorage so reload can restore
+    localStorage.setItem("chat_name", currentName);
+    localStorage.setItem("chat_room", currentRoom);
+
+    // ❌ don't disconnect old socket here
+    // if (socket && socket.connected) socket.disconnect();
 
     document.getElementById("messages").innerHTML = "";
     lastPersistedTs = null;
     document.getElementById("input").disabled = false;
     document.getElementById("send").disabled = false;
     document.getElementById("attach").disabled = false;
-    document.getElementById("user-list").innerHTML = "";
 
-    // ✅ Save session
-    localStorage.setItem("chat_name", currentName);
-    localStorage.setItem("chat_room", currentRoom);
+    document.getElementById("user-list").innerHTML = "";
 
     socket = io("/", { path: "/socket.io" });
 
-    // ✅ SINGLE users_update handler (diffs DOM; no sorting)
+    // ✅ users_update with duplicate guard
     socket.on("users_update", data => {
       if (data.room !== currentRoom) return;
 
       const list = document.getElementById("user-list");
+      const seen = new Set();
       const existing = new Map();
       list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
 
       data.users.forEach(u => {
+        if (seen.has(u.name)) return;
+        seen.add(u.name);
+
         const color = u.status === "online" ? "#25d366" : "red";
         const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
 
@@ -698,14 +693,12 @@
         }
       });
 
-      // remove users that left
       existing.forEach(li => {
         li.classList.add("fade-out");
         setTimeout(() => li.remove(), 300);
       });
     });
 
-    // Hide intro and show chat
     document.getElementById("chat-container").style.display = "flex";
     document.getElementById("input-area").style.display = "flex";
     document.getElementById("intro").style.display = "none";
@@ -730,11 +723,12 @@
         lastPersistedTs = null;
         joinedRooms.delete(data.room);
         currentRoom = "";
+        document.getElementById("user-list").innerHTML = "";
 
-        // clear saved session
+        // 🔥 Clear storage when room destroyed
+        localStorage.removeItem("chat_name");
         localStorage.removeItem("chat_room");
 
-        document.getElementById("user-list").innerHTML = "";
         document.getElementById("chat-container").style.display = "none";
         document.getElementById("input-area").style.display = "none";
         document.getElementById("intro").style.display = "block";
@@ -854,17 +848,18 @@
   async function destroyRoom() {
     if (!currentRoom) { alert("Join a room first!"); return; }
     if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
-    await fetch(`/destroy/${currentRoom}`, { method: "DELETE" });
 
+    await fetch(`/destroy/${currentRoom}`, { method: "DELETE" });
     document.getElementById("messages").innerHTML = "";
     addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
-    lastPersistedTs = null;
-    joinedRooms.delete(currentRoom);
 
-    // clear saved session
+    lastPersistedTs = null;
+    localStorage.removeItem("chat_name");
     localStorage.removeItem("chat_room");
 
+    joinedRooms.delete(currentRoom);
     currentRoom = "";
+
     document.getElementById("chat-container").style.display = "none";
     document.getElementById("input-area").style.display = "none";
     document.getElementById("intro").style.display = "block";
@@ -885,7 +880,8 @@
     joinedRooms.delete(currentRoom);
     currentRoom = "";
 
-    // clear saved session
+    // ✅ clear session
+    localStorage.removeItem("chat_name");
     localStorage.removeItem("chat_room");
 
     document.getElementById("user-list").innerHTML = "";
@@ -893,7 +889,6 @@
     document.getElementById("input-area").style.display = "none";
   }
 
-  // Handle offline
   window.addEventListener("offline", () => {
     if (socket && socket.connected) {
       socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
@@ -901,15 +896,6 @@
     }
   });
 
-  // Handle tab close
-  window.addEventListener("beforeunload", () => {
-    if (socket && socket.connected) {
-      socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
-      socket.disconnect();
-    }
-  });
-
-  // Handle online + reconnect
   let reconnectTimer;
   window.addEventListener("online", () => {
     clearTimeout(reconnectTimer);
@@ -924,7 +910,19 @@
       }
     }, 300);
   });
+
+  // ✅ Auto-restore on reload
+  window.addEventListener("load", () => {
+    const savedName = localStorage.getItem("chat_name");
+    const savedRoom = localStorage.getItem("chat_room");
+    if (savedName && savedRoom) {
+      document.getElementById("name").value = savedName;
+      document.getElementById("room").value = savedRoom;
+      joinRoom();
+    }
+  });
 </script>
+
 
 </body>
 

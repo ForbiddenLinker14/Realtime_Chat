@@ -1,7 +1,4 @@
-#                                                  ওঁ নমো 
-                                                 
-# সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ
-
+# ---------------- server.py ----------------
 import sqlite3
 from datetime import datetime, timezone
 from fastapi import FastAPI
@@ -15,10 +12,7 @@ import aiohttp
 
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
-ROOM_USERS = {}  # { room: {sid: username} }
-DISCONNECT_TIMERS = {}  # sid -> asyncio.Task (delayed disconnect broadcast)
-FORCE_DISCONNECT = set()  # track sids that called manual_disconnect
-
+ROOM_USERS = {}  # { room: { username: sid } }
 
 # ---------------- Database ----------------
 def init_db():
@@ -130,8 +124,8 @@ sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
     max_http_buffer_size=10 * 1024 * 1024,
-    ping_interval=3,  # send ping every 3s
-    ping_timeout=5,  # if no pong reply within 5s -> disconnect
+    ping_interval=3,
+    ping_timeout=5,
 )
 app = FastAPI()
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
@@ -142,41 +136,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------- Helper ----------------
 async def broadcast_users(room):
-    users = [
-        {"name": username, "status": "online"}
-        for sid, username in ROOM_USERS.get(room, {}).items()
-    ]
+    users = [{"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})]
     await sio.emit("users_update", {"room": room, "users": users}, room=room)
-
-
-async def handle_disconnect(sid, reason="disconnected"):
-    for room, users in list(ROOM_USERS.items()):
-        if sid in users:
-            username = users[sid]
-            del users[sid]
-            if not users:
-                del ROOM_USERS[room]
-            await broadcast_users(room)
-            await sio.emit(
-                "message",
-                {
-                    "sender": "System",
-                    "text": f"{username} {reason}.",
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                },
-                room=room,
-            )
-    if sid in DISCONNECT_TIMERS:
-        del DISCONNECT_TIMERS[sid]
 
 
 # ---------------- Routes ----------------
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
     clear_room(room)
-    await sio.emit(
-        "clear", {"room": room, "message": "Room history cleared."}, room=room
-    )
+    await sio.emit("clear", {"room": room, "message": "Room history cleared."}, room=room)
     return JSONResponse({"status": "ok", "message": f"Room {room} cleared."})
 
 
@@ -204,21 +172,25 @@ async def destroy_room(room: str):
 @sio.event
 async def join(sid, data):
     room = data["room"]
-    sender = data["sender"]
+    username = data["sender"]
     last_ts = data.get("lastTs")
-
-    if sid in DISCONNECT_TIMERS:  # cancel delayed disconnect
-        DISCONNECT_TIMERS[sid].cancel()
-        del DISCONNECT_TIMERS[sid]
 
     if room in DESTROYED_ROOMS:
         DESTROYED_ROOMS.remove(room)
 
-    await sio.enter_room(sid, room)
     if room not in ROOM_USERS:
         ROOM_USERS[room] = {}
-    ROOM_USERS[room][sid] = sender
 
+    # if username already in room, replace old sid
+    old_sid = ROOM_USERS[room].get(username)
+    if old_sid and old_sid != sid:
+        try:
+            await sio.leave_room(old_sid, room)
+        except Exception:
+            pass
+
+    ROOM_USERS[room][username] = sid
+    await sio.enter_room(sid, room)
     await broadcast_users(room)
 
     # send missed messages
@@ -228,13 +200,7 @@ async def join(sid, data):
         if filename:
             await sio.emit(
                 "file",
-                {
-                    "sender": sender_,
-                    "filename": filename,
-                    "mimetype": mimetype,
-                    "data": filedata,
-                    "ts": ts,
-                },
+                {"sender": sender_, "filename": filename, "mimetype": mimetype, "data": filedata, "ts": ts},
                 to=sid,
             )
         else:
@@ -242,15 +208,13 @@ async def join(sid, data):
                 "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
             )
 
-    await sio.emit(
-        "message",
-        {
-            "sender": "System",
-            "text": f"{sender} joined!",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        },
-        room=room,
-    )
+    # optional: suppress joined msg if it’s a reload
+    if not old_sid:
+        await sio.emit(
+            "message",
+            {"sender": "System", "text": f"{username} joined!", "ts": datetime.now(timezone.utc).isoformat()},
+            room=room,
+        )
 
 
 @sio.event
@@ -261,11 +225,7 @@ async def message(sid, data):
     save_message(room, data["sender"], text=data["text"])
     await sio.emit(
         "message",
-        {
-            "sender": data["sender"],
-            "text": data["text"],
-            "ts": datetime.now(timezone.utc).isoformat(),
-        },
+        {"sender": data["sender"], "text": data["text"], "ts": datetime.now(timezone.utc).isoformat()},
         room=room,
     )
 
@@ -298,54 +258,39 @@ async def file(sid, data):
 @sio.event
 async def leave(sid, data):
     room = data["room"]
-    sender = data["sender"]
-    await sio.leave_room(sid, room)
-    if room in ROOM_USERS and sid in ROOM_USERS[room]:
-        del ROOM_USERS[room][sid]
+    username = data["sender"]
+    if room in ROOM_USERS and username in ROOM_USERS[room]:
+        del ROOM_USERS[room][username]
         if not ROOM_USERS[room]:
             del ROOM_USERS[room]
+    await sio.leave_room(sid, room)
     await broadcast_users(room)
     await sio.emit("left_room", {"room": room}, to=sid)
     await sio.emit(
         "message",
-        {
-            "sender": "System",
-            "text": f"{sender} left!",
-            "ts": datetime.now(timezone.utc).isoformat(),
-        },
+        {"sender": "System", "text": f"{username} left!", "ts": datetime.now(timezone.utc).isoformat()},
         room=room,
     )
 
 
 @sio.event
-async def manual_disconnect(sid, data):
-    FORCE_DISCONNECT.add(sid)  # mark this sid
-    await handle_disconnect(sid, reason="disconnected")
-    if sid in DISCONNECT_TIMERS:
-        DISCONNECT_TIMERS[sid].cancel()
-        del DISCONNECT_TIMERS[sid]
-
-
-@sio.event
-async def manual_reconnect(sid, data):
-    await join(
-        sid,
-        {"room": data["room"], "sender": data["sender"], "lastTs": data.get("lastTs")},
-    )
-
-
-@sio.event
 async def disconnect(sid):
-    # skip if we already handled via manual_disconnect
-    if sid in FORCE_DISCONNECT:
-        FORCE_DISCONNECT.remove(sid)
-        return
-
-    async def delayed_disconnect():
-        await asyncio.sleep(0.5)
-        await handle_disconnect(sid, reason="disconnected")
-
-    DISCONNECT_TIMERS[sid] = asyncio.create_task(delayed_disconnect())
+    # check if sid still mapped to a username
+    for room, users in list(ROOM_USERS.items()):
+        for username, user_sid in list(users.items()):
+            if user_sid == sid:
+                # make sure not reconnected with new sid
+                if ROOM_USERS[room].get(username) != sid:
+                    continue
+                del users[username]
+                if not users:
+                    del ROOM_USERS[room]
+                await broadcast_users(room)
+                await sio.emit(
+                    "message",
+                    {"sender": "System", "text": f"{username} disconnected.", "ts": datetime.now(timezone.utc).isoformat()},
+                    room=room,
+                )
 
 
 # ---------------- Background Cleanup + KeepAlive ----------------
@@ -355,14 +300,11 @@ async def startup_tasks():
         while True:
             deleted = cleanup_old_messages()
             if deleted > 0:
-                await sio.emit(
-                    "cleanup",
-                    {"message": f"{deleted} old messages (48h+) were removed."},
-                )
-            await asyncio.sleep(3600)  # run every hour
+                await sio.emit("cleanup", {"message": f"{deleted} old messages (48h+) were removed."})
+            await asyncio.sleep(3600)
 
     async def ping_self():
-        url = "https://realtime-chat-1mv3.onrender.com"  # <-- replace with your Render URL
+        url = "https://realtime-chat-1mv3.onrender.com"
         while True:
             try:
                 async with aiohttp.ClientSession() as session:
@@ -370,9 +312,8 @@ async def startup_tasks():
                         print(f"[KeepAlive] Pinged {url} - {resp.status}")
             except Exception as e:
                 print(f"[KeepAlive] Error: {e}")
-            await asyncio.sleep(300)  # ping every 5 minutes
+            await asyncio.sleep(300)
 
-    # schedule both tasks in background
     asyncio.create_task(loop_cleanup())
     asyncio.create_task(ping_self())
 
@@ -393,7 +334,7 @@ async def service_worker():
 
 @app.get("/sitemap.xml")
 def sitemap():
-    base_url = "https://realtime-chat-1mv3.onrender.com"  # change to your domain
+    base_url = "https://realtime-chat-1mv3.onrender.com"
     static_pages = [
         "index.html",
         "about.html",
@@ -404,20 +345,16 @@ def sitemap():
         "terms-of-service.html",
     ]
 
-    # build XML sitemap
     xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-
     for page in static_pages:
-        url = page.replace("index.html", "")  # index.html = root "/"
+        url = page.replace("index.html", "")
         if url == "":
             loc = f"{base_url}/"
         else:
             loc = f"{base_url}/{url}"
         xml += f"  <url><loc>{loc}</loc></url>\n"
-
     xml += "</urlset>"
-
     return Response(content=xml, media_type="application/xml")
 
 
