@@ -392,6 +392,39 @@ async def service_worker():
     return FileResponse(os.path.join(BASE_DIR, "sw.js"))
 
 
+from fastapi.responses import Response
+import os
+
+@app.get("/sitemap.xml")
+def sitemap():
+    base_url = "https://realtime-chat-1mv3.onrender.com"  # change to your domain
+    static_pages = [
+        "index.html",
+        "about.html",
+        "blog.html",
+        "contact.html",
+        "disclaimer.html",
+        "privacy-policy.html",
+        "terms-of-service.html",
+    ]
+
+    # build XML sitemap
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+
+    for page in static_pages:
+        url = page.replace("index.html", "")  # index.html = root "/"
+        if url == "":
+            loc = f"{base_url}/"
+        else:
+            loc = f"{base_url}/{url}"
+        xml += f"  <url><loc>{loc}</loc></url>\n"
+
+    xml += "</urlset>"
+
+    return Response(content=xml, media_type="application/xml")
+
+
 @app.get("/ads.txt")
 def ads():
     return FileResponse("ads.txt", media_type="text/plain")
