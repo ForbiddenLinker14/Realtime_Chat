@@ -1,4 +1,4 @@
-                                              <!-- ওঁ নমো 
+<!-- ওঁ নমো 
 
 সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ -->
 
@@ -615,9 +615,7 @@
       <button id="send" type="button" disabled>Send</button>
     </div>
   </div>
-
   <script>
-
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sw.js")
@@ -630,13 +628,21 @@
     let joinedRooms = new Set();
     let lastPersistedTs = null;
 
-    function bumpTs(ts) { if (!ts) return; if (!lastPersistedTs || ts > lastPersistedTs) lastPersistedTs = ts; }
+    function bumpTs(ts) {
+      if (!ts) return;
+      if (!lastPersistedTs || ts > lastPersistedTs) lastPersistedTs = ts;
+    }
 
     function toggleSidebar() {
       const sidebar = document.getElementById("sidebar");
       const showArrow = document.getElementById("show-arrow");
-      if (sidebar.classList.contains("hidden")) { sidebar.classList.remove("hidden"); showArrow.style.display = "none"; }
-      else { sidebar.classList.add("hidden"); showArrow.style.display = "block"; }
+      if (sidebar.classList.contains("hidden")) {
+        sidebar.classList.remove("hidden");
+        showArrow.style.display = "none";
+      } else {
+        sidebar.classList.add("hidden");
+        showArrow.style.display = "block";
+      }
     }
 
     document.getElementById("input-area").style.display = "none";
@@ -661,7 +667,7 @@
 
       socket = io("/", { path: "/socket.io" });
 
-      // ✅ SINGLE users_update handler (diffs DOM; no sorting)
+      // ✅ SINGLE users_update handler (with de-duplication)
       socket.on("users_update", data => {
         if (data.room !== currentRoom) return;
 
@@ -671,7 +677,17 @@
         const existing = new Map();
         list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
 
+        // filter duplicates from server
+        const uniqueUsers = [];
+        const seen = new Set();
         data.users.forEach(u => {
+          if (!seen.has(u.name)) {
+            uniqueUsers.push(u);
+            seen.add(u.name);
+          }
+        });
+
+        uniqueUsers.forEach(u => {
           const color = u.status === "online" ? "#25d366" : "red";
           const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
 
@@ -770,6 +786,24 @@
       };
     }
 
+    // ✅ Ensure clean disconnect on tab close / reload
+    window.addEventListener("beforeunload", () => {
+      if (socket && socket.connected) {
+        socket.emit("leave", { room: currentRoom, sender: currentName });
+        socket.disconnect();
+      }
+      if (currentRoom && currentName) {
+        localStorage.setItem("chat_state", JSON.stringify({
+          room: currentRoom,
+          name: currentName,
+          lastTs: lastPersistedTs
+        }));
+      } else {
+        localStorage.removeItem("chat_state");
+      }
+    });
+
+
     function sendMessage() {
       const text = document.getElementById("input").value.trim();
       if (!text || !currentRoom) return;
@@ -835,7 +869,6 @@
           const text = await res.text();
           throw new Error(`Failed to clear room: ${res.status} ${text}`);
         }
-        // The server will emit "clear" to that room; your socket handler will wipe the UI.
       } catch (err) {
         console.error(err);
         alert(err.message);
@@ -850,14 +883,13 @@
       addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
       lastPersistedTs = null;
 
-      // Show intro again
       document.getElementById("chat-container").style.display = "none";
       document.getElementById("input-area").style.display = "none";
       document.getElementById("intro").style.display = "block";
       document.getElementById("messages").style.display = "none";
+
+      localStorage.removeItem("chat_state"); // clear saved state
     }
-
-
 
     function leaveRoom() {
       if (!currentRoom) { alert("You are not in a room!"); return; }
@@ -872,22 +904,53 @@
       lastPersistedTs = null;
       joinedRooms.delete(currentRoom);
       currentRoom = "";
-
-      // ✅ do NOT hide the users panel; just empty it so layout stays stable
       document.getElementById("user-list").innerHTML = "";
 
-      // Show intro again
       document.getElementById("chat-container").style.display = "flex";
       document.getElementById("input-area").style.display = "none";
-      // document.getElementById("intro").style.display = "block";
-      // document.getElementById("messages").style.display = "none";
+
+      localStorage.removeItem("chat_state"); // clear saved state
     }
+
+    // Save chat state before unload
+    window.addEventListener("beforeunload", () => {
+      if (currentRoom && currentName) {
+        localStorage.setItem("chat_state", JSON.stringify({
+          room: currentRoom,
+          name: currentName,
+          lastTs: lastPersistedTs
+        }));
+      } else {
+        localStorage.removeItem("chat_state");
+      }
+    });
+
+    // Restore chat state on load
+    window.addEventListener("load", () => {
+      const saved = localStorage.getItem("chat_state");
+      if (saved) {
+        try {
+          const { room, name, lastTs } = JSON.parse(saved);
+          if (room && name) {
+            document.getElementById("name").value = name;
+            document.getElementById("room").value = room;
+            currentName = name;
+            currentRoom = room;
+            lastPersistedTs = lastTs || null;
+            joinRoom();
+          }
+        } catch (e) {
+          console.error("Failed to restore chat state:", e);
+          localStorage.removeItem("chat_state");
+        }
+      }
+    });
 
     // Handle offline
     window.addEventListener("offline", () => {
       if (socket && socket.connected) {
         socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
-        socket.disconnect(); // close cleanly
+        socket.disconnect();
       }
     });
 
@@ -901,13 +964,13 @@
           socket.emit("manual_reconnect", {
             room: currentRoom,
             sender: currentName,
-            lastTs: lastPersistedTs || null, // resume only missed messages
+            lastTs: lastPersistedTs || null,
           });
         }
       }, 300);
     });
-
   </script>
+
 </body>
 
 </html>

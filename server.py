@@ -5,15 +5,13 @@
 import sqlite3
 from datetime import datetime, timezone
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 import socketio
 import socket
 import os
 import asyncio
 from fastapi.staticfiles import StaticFiles
 import aiohttp
-from fastapi.responses import Response
-# ---------------- Globals ----------------
 
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
