@@ -12,6 +12,7 @@ import os
 import asyncio
 from fastapi.staticfiles import StaticFiles
 import aiohttp
+# ---------------- Globals ----------------
 
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
@@ -348,10 +349,6 @@ async def disconnect(sid):
     DISCONNECT_TIMERS[sid] = asyncio.create_task(delayed_disconnect())
 
 
-# ---------------- Background Cleanup ----------------
-import aiohttp
-
-
 # ---------------- Background Cleanup + KeepAlive ----------------
 @app.on_event("startup")
 async def startup_tasks():
@@ -398,6 +395,11 @@ async def service_worker():
 @app.get("/ads.txt")
 def ads():
     return FileResponse("ads.txt", media_type="text/plain")
+
+
+@app.get("/robots.txt")
+def robots():
+    return FileResponse("robots.txt", media_type="text/plain")
 
 
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
