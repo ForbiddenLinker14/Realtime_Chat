@@ -657,8 +657,11 @@
       else { sidebar.classList.add("hidden"); showArrow.style.display = "block"; }
     }
 
+    // Hide chat by default
     document.getElementById("input-area").style.display = "none";
     document.getElementById("chat-container").style.display = "none";
+    document.getElementById("messages").style.display = "none";
+    document.getElementById("intro").style.display = "none"; // 🔥 hide intro by default
 
     function joinRoom() {
       currentName = document.getElementById("name").value.trim();
@@ -772,16 +775,13 @@
       });
 
       socket.on("connect", () => {
-        // Attempt to join immediately
         safeJoin();
-
-        // Retry join after 500ms in case of reload race
         setTimeout(() => {
           if (!joinedRooms.has(currentRoom)) {
             console.log("⏳ Retrying join...");
             safeJoin();
           }
-        }, 500);
+        }, 300);
       });
 
       socket.on("message", data => addMessage(data));
@@ -842,21 +842,21 @@
 
       if (data.mimetype && data.mimetype.startsWith("image/")) {
         div.innerHTML = `
-      <div class="username"><strong>${data.sender}</strong></div>
-      <div class="image-wrapper">
-        <a href="${data.data}" download="${data.filename}" class="download-icon" title="Download">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24">
-            <path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/>
-          </svg>
-        </a>
-        <img src="${data.data}" alt="${data.filename}">
-      </div>
-      <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
+        <div class="username"><strong>${data.sender}</strong></div>
+        <div class="image-wrapper">
+          <a href="${data.data}" download="${data.filename}" class="download-icon" title="Download">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24">
+              <path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/>
+            </svg>
+          </a>
+          <img src="${data.data}" alt="${data.filename}">
+        </div>
+        <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
       } else {
         div.innerHTML = `
-      <div class="username"><strong>${data.sender}</strong></div>
-      <a href="${data.data}" download="${data.filename}" class="download-link">📎 ${data.filename}</a><br>
-      <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
+        <div class="username"><strong>${data.sender}</strong></div>
+        <a href="${data.data}" download="${data.filename}" class="download-link">📎 ${data.filename}</a><br>
+        <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
       }
       const messages = document.getElementById("messages");
       messages.appendChild(div);
@@ -895,6 +895,7 @@
       joinedRooms.delete(currentRoom);
       currentRoom = "";
 
+      document.getElementById("user-list").innerHTML = "";
       document.getElementById("chat-container").style.display = "none";
       document.getElementById("input-area").style.display = "none";
       document.getElementById("intro").style.display = "block";
@@ -915,7 +916,6 @@
       joinedRooms.delete(currentRoom);
       currentRoom = "";
 
-      // ✅ clear session
       Storage.remove("chat_name");
       Storage.remove("chat_room");
 
@@ -946,28 +946,27 @@
       }, 300);
     });
 
-    // 🔹 Ensure server removes user on reload/close
     window.addEventListener("beforeunload", () => {
       if (socket && currentRoom && currentName && socket.connected) {
         socket.emit("manual_disconnect", { room: currentRoom, sender: currentName });
-        // optional: disconnect socket
-        // socket.disconnect();
       }
     });
 
-    // 🔹 Delay auto-restore join slightly to avoid race
+    // 🔹 Auto-restore join (no flash intro)
     window.addEventListener("load", () => {
       const savedName = Storage.get("chat_name");
       const savedRoom = Storage.get("chat_room");
       if (savedName && savedRoom) {
-        setTimeout(() => {
-          document.getElementById("name").value = savedName;
-          document.getElementById("room").value = savedRoom;
-          joinRoom();
-        }, 300); // 300ms ensures disconnect cleanup completes
+        document.getElementById("name").value = savedName;
+        document.getElementById("room").value = savedRoom;
+        joinRoom();
+      } else {
+        document.getElementById("intro").style.display = "block"; // only show intro if no session
       }
     });
-</script>
+  </script>
+
 
 </body>
+
 </html>
