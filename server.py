@@ -14,6 +14,7 @@ DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 
+
 # ---------------- Database ----------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -136,7 +137,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ---------------- Helper ----------------
 async def broadcast_users(room):
-    users = [{"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})]
+    users = [
+        {"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})
+    ]
     await sio.emit("users_update", {"room": room, "users": users}, room=room)
 
 
@@ -144,7 +147,9 @@ async def broadcast_users(room):
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
     clear_room(room)
-    await sio.emit("clear", {"room": room, "message": "Room history cleared."}, room=room)
+    await sio.emit(
+        "clear", {"room": room, "message": "Room history cleared."}, room=room
+    )
     return JSONResponse({"status": "ok", "message": f"Room {room} cleared."})
 
 
@@ -200,7 +205,13 @@ async def join(sid, data):
         if filename:
             await sio.emit(
                 "file",
-                {"sender": sender_, "filename": filename, "mimetype": mimetype, "data": filedata, "ts": ts},
+                {
+                    "sender": sender_,
+                    "filename": filename,
+                    "mimetype": mimetype,
+                    "data": filedata,
+                    "ts": ts,
+                },
                 to=sid,
             )
         else:
@@ -212,7 +223,11 @@ async def join(sid, data):
     if not old_sid:
         await sio.emit(
             "message",
-            {"sender": "System", "text": f"{username} joined!", "ts": datetime.now(timezone.utc).isoformat()},
+            {
+                "sender": "System",
+                "text": f"{username} joined!",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
             room=room,
         )
 
@@ -225,7 +240,11 @@ async def message(sid, data):
     save_message(room, data["sender"], text=data["text"])
     await sio.emit(
         "message",
-        {"sender": data["sender"], "text": data["text"], "ts": datetime.now(timezone.utc).isoformat()},
+        {
+            "sender": data["sender"],
+            "text": data["text"],
+            "ts": datetime.now(timezone.utc).isoformat(),
+        },
         room=room,
     )
 
@@ -268,7 +287,11 @@ async def leave(sid, data):
     await sio.emit("left_room", {"room": room}, to=sid)
     await sio.emit(
         "message",
-        {"sender": "System", "text": f"{username} left!", "ts": datetime.now(timezone.utc).isoformat()},
+        {
+            "sender": "System",
+            "text": f"{username} left!",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        },
         room=room,
     )
 
@@ -288,7 +311,11 @@ async def disconnect(sid):
                 await broadcast_users(room)
                 await sio.emit(
                     "message",
-                    {"sender": "System", "text": f"{username} disconnected.", "ts": datetime.now(timezone.utc).isoformat()},
+                    {
+                        "sender": "System",
+                        "text": f"{username} disconnected.",
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
                     room=room,
                 )
 
@@ -300,7 +327,10 @@ async def startup_tasks():
         while True:
             deleted = cleanup_old_messages()
             if deleted > 0:
-                await sio.emit("cleanup", {"message": f"{deleted} old messages (48h+) were removed."})
+                await sio.emit(
+                    "cleanup",
+                    {"message": f"{deleted} old messages (48h+) were removed."},
+                )
             await asyncio.sleep(3600)
 
     async def ping_self():
