@@ -1,4 +1,4 @@
-                                              <!-- ওঁ নমো 
+<!-- ওঁ নমো 
 
 সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ -->
 
@@ -617,226 +617,231 @@
   </div>
 
   <script>
-  // ✅ Storage fallback (localStorage → sessionStorage → cookies)
-  const Storage = {
-    set(k, v) {
-      try { localStorage.setItem(k, v); return; } catch {}
-      try { sessionStorage.setItem(k, v); return; } catch {}
-      document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
-    },
-    get(k) {
-      try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch {}
-      const m = document.cookie.match(new RegExp("(^| )"+k+"=([^;]+)"));
-      return m ? decodeURIComponent(m[2]) : null;
-    },
-    remove(k) {
-      try { localStorage.removeItem(k); } catch {}
-      try { sessionStorage.removeItem(k); } catch {}
-      document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    }
-  };
-
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/sw.js")
-        .then(() => console.log("✅ Service Worker registered"))
-        .catch(err => console.error("SW failed", err));
-    });
-  }
-
-  let socket, currentRoom = "", currentName = "";
-  let joinedRooms = new Set();
-  let lastPersistedTs = null;
-
-  function bumpTs(ts) { if (!ts) return; if (!lastPersistedTs || ts > lastPersistedTs) lastPersistedTs = ts; }
-
-  function toggleSidebar() {
-    const sidebar = document.getElementById("sidebar");
-    const showArrow = document.getElementById("show-arrow");
-    if (sidebar.classList.contains("hidden")) { sidebar.classList.remove("hidden"); showArrow.style.display = "none"; }
-    else { sidebar.classList.add("hidden"); showArrow.style.display = "block"; }
-  }
-
-  document.getElementById("input-area").style.display = "none";
-  document.getElementById("chat-container").style.display = "none";
-
-  function joinRoom() {
-    currentName = document.getElementById("name").value.trim();
-    currentRoom = document.getElementById("room").value.trim();
-    if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
-    if (joinedRooms.has(currentRoom)) { alert("You are already in this room!"); return; }
-
-    // 🔥 Save with fallback
-    Storage.set("chat_name", currentName);
-    Storage.set("chat_room", currentRoom);
-
-    document.getElementById("messages").innerHTML = "";
-    lastPersistedTs = null;
-    document.getElementById("input").disabled = false;
-    document.getElementById("send").disabled = false;
-    document.getElementById("attach").disabled = false;
-
-    document.getElementById("user-list").innerHTML = "";
-
-    socket = io("/", { path: "/socket.io" });
-
-    // ✅ Reliable join wrapper
-    function safeJoin() {
-      if (!socket || !socket.connected) return;
-      socket.emit("join", { room: currentRoom, sender: currentName, lastTs: lastPersistedTs || null });
-      joinedRooms.add(currentRoom);
-      console.log("✅ Joined room:", currentRoom, "as", currentName);
-    }
-
-    // ✅ users_update with duplicate guard
-    socket.on("users_update", data => {
-      if (data.room !== currentRoom) return;
-
-      const list = document.getElementById("user-list");
-      const seen = new Set();
-      const existing = new Map();
-      list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
-
-      data.users.forEach(u => {
-        if (seen.has(u.name)) return;
-        seen.add(u.name);
-
-        const color = u.status === "online" ? "#25d366" : "red";
-        const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
-
-        let li = existing.get(u.name);
-        if (li) {
-          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-          existing.delete(u.name);
-        } else {
-          li = document.createElement("li");
-          li.setAttribute("data-name", u.name);
-          li.className = "fade-in";
-          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-          list.appendChild(li);
-        }
-      });
-
-      existing.forEach(li => {
-        li.classList.add("fade-out");
-        setTimeout(() => li.remove(), 300);
-      });
-    });
-
-    document.getElementById("chat-container").style.display = "flex";
-    document.getElementById("input-area").style.display = "flex";
-    document.getElementById("intro").style.display = "none";
-    document.getElementById("messages").style.display = "block";
-
-    socket.on("left_room", data => {
-      if (data.room === currentRoom) {
-        document.getElementById("user-list").innerHTML = "";
+    // ✅ Storage fallback (localStorage → sessionStorage → cookies)
+    const Storage = {
+      set(k, v) {
+        try { localStorage.setItem(k, v); return; } catch { }
+        try { sessionStorage.setItem(k, v); return; } catch { }
+        document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
+      },
+      get(k) {
+        try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch { }
+        const m = document.cookie.match(new RegExp("(^| )" + k + "=([^;]+)"));
+        return m ? decodeURIComponent(m[2]) : null;
+      },
+      remove(k) {
+        try { localStorage.removeItem(k); } catch { }
+        try { sessionStorage.removeItem(k); } catch { }
+        document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       }
-    });
-
-    socket.on("room_destroyed", (data) => {
-      if (currentRoom === data.room) {
-        document.getElementById("input").disabled = true;
-        document.getElementById("send").disabled = true;
-        document.getElementById("attach").disabled = true;
-        addMessage({
-          sender: "System",
-          text: "Room destroyed. You cannot send messages until you join a new room.",
-          ts: new Date().toISOString()
-        });
-        lastPersistedTs = null;
-        joinedRooms.delete(data.room);
-        currentRoom = "";
-        document.getElementById("user-list").innerHTML = "";
-
-        // 🔥 Clear storage when room destroyed
-        Storage.remove("chat_name");
-        Storage.remove("chat_room");
-
-        document.getElementById("chat-container").style.display = "none";
-        document.getElementById("input-area").style.display = "none";
-        document.getElementById("intro").style.display = "block";
-        document.getElementById("messages").style.display = "none";
-      }
-    });
-
-    socket.on("clear", data => {
-      if (currentRoom === data.room) {
-        document.getElementById("messages").innerHTML = "";
-        addMessage({ sender: "System", text: data.message, ts: new Date().toISOString() });
-        lastPersistedTs = null;
-      }
-    });
-
-    socket.on("connect", () => {
-      safeJoin();
-      // retry join after 500ms to fix reload race
-      setTimeout(() => {
-        if (socket && socket.connected && !joinedRooms.has(currentRoom)) {
-          console.log("⏳ Retrying join...");
-          safeJoin();
-        }
-      }, 500);
-    });
-
-    socket.on("message", data => addMessage(data));
-    socket.on("file", data => addFileMessage(data));
-
-    document.getElementById("send").onclick = sendMessage;
-    document.getElementById("input").onkeypress = e => { if (e.key === "Enter") sendMessage(); };
-
-    document.getElementById("attach").onclick = e => {
-      e.preventDefault();
-      document.getElementById("fileInput").click();
     };
 
-    document.getElementById("fileInput").onchange = () => {
-      const file = document.getElementById("fileInput").files[0];
-      if (!file || !currentRoom) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        socket.emit("file", {
-          room: currentRoom, sender: currentName,
-          filename: file.name, mimetype: file.type, data: reader.result
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js")
+          .then(() => console.log("✅ Service Worker registered"))
+          .catch(err => console.error("SW failed", err));
+      });
+    }
+
+    let socket, currentRoom = "", currentName = "";
+    let joinedRooms = new Set();
+    let lastPersistedTs = null;
+
+    function bumpTs(ts) { if (!ts) return; if (!lastPersistedTs || ts > lastPersistedTs) lastPersistedTs = ts; }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById("sidebar");
+      const showArrow = document.getElementById("show-arrow");
+      if (sidebar.classList.contains("hidden")) { sidebar.classList.remove("hidden"); showArrow.style.display = "none"; }
+      else { sidebar.classList.add("hidden"); showArrow.style.display = "block"; }
+    }
+
+    document.getElementById("input-area").style.display = "none";
+    document.getElementById("chat-container").style.display = "none";
+
+    function joinRoom() {
+      currentName = document.getElementById("name").value.trim();
+      currentRoom = document.getElementById("room").value.trim();
+      if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
+      if (joinedRooms.has(currentRoom)) { alert("You are already in this room!"); return; }
+
+      // 🔥 Save with fallback
+      Storage.set("chat_name", currentName);
+      Storage.set("chat_room", currentRoom);
+
+      document.getElementById("messages").innerHTML = "";
+      lastPersistedTs = null;
+      document.getElementById("input").disabled = false;
+      document.getElementById("send").disabled = false;
+      document.getElementById("attach").disabled = false;
+
+      document.getElementById("user-list").innerHTML = "";
+
+      socket = io("/", { path: "/socket.io" });
+
+      // ✅ Reliable join wrapper
+      let joinInProgress = false;
+      function safeJoin() {
+        if (!socket || !socket.connected || joinInProgress) return;
+        joinInProgress = true;
+        socket.emit("join", { room: currentRoom, sender: currentName, lastTs: lastPersistedTs || null }, () => {
+          joinInProgress = false;
         });
+        joinedRooms.add(currentRoom);
+      }
+
+      // ✅ users_update with duplicate guard
+      socket.on("users_update", data => {
+        if (data.room !== currentRoom) return;
+
+        const list = document.getElementById("user-list");
+        const seen = new Set();
+        const existing = new Map();
+        list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
+
+        data.users.forEach(u => {
+          if (seen.has(u.name)) return;
+          seen.add(u.name);
+
+          const color = u.status === "online" ? "#25d366" : "red";
+          const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
+
+          let li = existing.get(u.name);
+          if (li) {
+            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+            existing.delete(u.name);
+          } else {
+            li = document.createElement("li");
+            li.setAttribute("data-name", u.name);
+            li.className = "fade-in";
+            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+            list.appendChild(li);
+          }
+        });
+
+        existing.forEach(li => {
+          li.classList.add("fade-out");
+          setTimeout(() => li.remove(), 300);
+        });
+      });
+
+      document.getElementById("chat-container").style.display = "flex";
+      document.getElementById("input-area").style.display = "flex";
+      document.getElementById("intro").style.display = "none";
+      document.getElementById("messages").style.display = "block";
+
+      socket.on("left_room", data => {
+        if (data.room === currentRoom) {
+          document.getElementById("user-list").innerHTML = "";
+        }
+      });
+
+      socket.on("room_destroyed", (data) => {
+        if (currentRoom === data.room) {
+          document.getElementById("input").disabled = true;
+          document.getElementById("send").disabled = true;
+          document.getElementById("attach").disabled = true;
+          addMessage({
+            sender: "System",
+            text: "Room destroyed. You cannot send messages until you join a new room.",
+            ts: new Date().toISOString()
+          });
+          lastPersistedTs = null;
+          joinedRooms.delete(data.room);
+          currentRoom = "";
+          document.getElementById("user-list").innerHTML = "";
+
+          // 🔥 Clear storage when room destroyed
+          Storage.remove("chat_name");
+          Storage.remove("chat_room");
+
+          document.getElementById("chat-container").style.display = "none";
+          document.getElementById("input-area").style.display = "none";
+          document.getElementById("intro").style.display = "block";
+          document.getElementById("messages").style.display = "none";
+        }
+      });
+
+      socket.on("clear", data => {
+        if (currentRoom === data.room) {
+          document.getElementById("messages").innerHTML = "";
+          addMessage({ sender: "System", text: data.message, ts: new Date().toISOString() });
+          lastPersistedTs = null;
+        }
+      });
+
+      socket.on("connect", () => {
+        // Attempt to join immediately
+        safeJoin();
+
+        // Retry join after 500ms in case of reload race
+        setTimeout(() => {
+          if (!joinedRooms.has(currentRoom)) {
+            console.log("⏳ Retrying join...");
+            safeJoin();
+          }
+        }, 500);
+      });
+
+      socket.on("message", data => addMessage(data));
+      socket.on("file", data => addFileMessage(data));
+
+      document.getElementById("send").onclick = sendMessage;
+      document.getElementById("input").onkeypress = e => { if (e.key === "Enter") sendMessage(); };
+
+      document.getElementById("attach").onclick = e => {
+        e.preventDefault();
+        document.getElementById("fileInput").click();
       };
-      reader.readAsDataURL(file);
-    };
-  }
 
-  function sendMessage() {
-    const text = document.getElementById("input").value.trim();
-    if (!text || !currentRoom) return;
-    socket.emit("message", { room: currentRoom, sender: currentName, text });
-    document.getElementById("input").value = "";
-  }
+      document.getElementById("fileInput").onchange = () => {
+        const file = document.getElementById("fileInput").files[0];
+        if (!file || !currentRoom) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          socket.emit("file", {
+            room: currentRoom, sender: currentName,
+            filename: file.name, mimetype: file.type, data: reader.result
+          });
+        };
+        reader.readAsDataURL(file);
+      };
+    }
 
-  function addMessage(data) {
-    const div = document.createElement("div");
-    if (data.sender === "System") {
-      div.className = "msg system";
-      div.textContent = data.text;
-    } else {
+    function sendMessage() {
+      const text = document.getElementById("input").value.trim();
+      if (!text || !currentRoom) return;
+      socket.emit("message", { room: currentRoom, sender: currentName, text });
+      document.getElementById("input").value = "";
+    }
+
+    function addMessage(data) {
+      const div = document.createElement("div");
+      if (data.sender === "System") {
+        div.className = "msg system";
+        div.textContent = data.text;
+      } else {
+        bumpTs(data.ts);
+        const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
+        div.className = "msg " + (isMe ? "me" : "other");
+        div.dataset.ts = data.ts;
+        div.innerHTML = `<strong>${data.sender}</strong><br>${data.text}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
+      }
+      const messages = document.getElementById("messages");
+      messages.appendChild(div);
+      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+    }
+
+    function addFileMessage(data) {
       bumpTs(data.ts);
+      const div = document.createElement("div");
       const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
       div.className = "msg " + (isMe ? "me" : "other");
       div.dataset.ts = data.ts;
-      div.innerHTML = `<strong>${data.sender}</strong><br>${data.text}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
-    }
-    const messages = document.getElementById("messages");
-    messages.appendChild(div);
-    messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
-  }
 
-  function addFileMessage(data) {
-    bumpTs(data.ts);
-    const div = document.createElement("div");
-    const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
-    div.className = "msg " + (isMe ? "me" : "other");
-    div.dataset.ts = data.ts;
-
-    if (data.mimetype && data.mimetype.startsWith("image/")) {
-      div.innerHTML = `
+      if (data.mimetype && data.mimetype.startsWith("image/")) {
+        div.innerHTML = `
       <div class="username"><strong>${data.sender}</strong></div>
       <div class="image-wrapper">
         <a href="${data.data}" download="${data.filename}" class="download-icon" title="Download">
@@ -847,112 +852,122 @@
         <img src="${data.data}" alt="${data.filename}">
       </div>
       <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
-    } else {
-      div.innerHTML = `
+      } else {
+        div.innerHTML = `
       <div class="username"><strong>${data.sender}</strong></div>
       <a href="${data.data}" download="${data.filename}" class="download-link">📎 ${data.filename}</a><br>
       <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
-    }
-    const messages = document.getElementById("messages");
-    messages.appendChild(div);
-    messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
-  }
-
-  async function clearRoom() {
-    if (!currentRoom) { alert("Join a room first!"); return; }
-    try {
-      const res = await fetch(`/clear/${encodeURIComponent(currentRoom)}`, {
-        method: "DELETE",
-        cache: "no-store"
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Failed to clear room: ${res.status} ${text}`);
       }
-    } catch (err) {
-      console.error(err);
-      alert(err.message);
+      const messages = document.getElementById("messages");
+      messages.appendChild(div);
+      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
     }
-  }
 
-  async function destroyRoom() {
-    if (!currentRoom) { alert("Join a room first!"); return; }
-    if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
-
-    await fetch(`/destroy/${currentRoom}`, { method: "DELETE" });
-    document.getElementById("messages").innerHTML = "";
-    addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
-
-    lastPersistedTs = null;
-    Storage.remove("chat_name");
-    Storage.remove("chat_room");
-
-    joinedRooms.delete(currentRoom);
-    currentRoom = "";
-
-    document.getElementById("chat-container").style.display = "none";
-    document.getElementById("input-area").style.display = "none";
-    document.getElementById("intro").style.display = "block";
-    document.getElementById("messages").style.display = "none";
-  }
-
-  function leaveRoom() {
-    if (!currentRoom) { alert("You are not in a room!"); return; }
-    socket.emit("leave", { room: currentRoom, sender: currentName });
-
-    document.getElementById("input").disabled = true;
-    document.getElementById("send").disabled = true;
-    document.getElementById("attach").disabled = true;
-
-    addMessage({ sender: "System", text: `You left room "${currentRoom}".`, ts: new Date().toISOString() });
-
-    lastPersistedTs = null;
-    joinedRooms.delete(currentRoom);
-    currentRoom = "";
-
-    // ✅ clear session
-    Storage.remove("chat_name");
-    Storage.remove("chat_room");
-
-    document.getElementById("user-list").innerHTML = "";
-    document.getElementById("chat-container").style.display = "flex";
-    document.getElementById("input-area").style.display = "none";
-  }
-
-  window.addEventListener("offline", () => {
-    if (socket && socket.connected) {
-      socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
-      socket.disconnect();
-    }
-  });
-
-  let reconnectTimer;
-  window.addEventListener("online", () => {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      if (socket && !socket.connected && currentRoom && currentName) {
-        socket.connect();
-        socket.emit("manual_reconnect", {
-          room: currentRoom,
-          sender: currentName,
-          lastTs: lastPersistedTs || null,
+    async function clearRoom() {
+      if (!currentRoom) { alert("Join a room first!"); return; }
+      try {
+        const res = await fetch(`/clear/${encodeURIComponent(currentRoom)}`, {
+          method: "DELETE",
+          cache: "no-store"
         });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(`Failed to clear room: ${res.status} ${text}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert(err.message);
       }
-    }, 300);
-  });
-
-  // ✅ Auto-restore on reload (with fallback)
-  window.addEventListener("load", () => {
-    const savedName = Storage.get("chat_name");
-    const savedRoom = Storage.get("chat_room");
-    if (savedName && savedRoom) {
-      document.getElementById("name").value = savedName;
-      document.getElementById("room").value = savedRoom;
-      joinRoom();
     }
-  });
+
+    async function destroyRoom() {
+      if (!currentRoom) { alert("Join a room first!"); return; }
+      if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
+
+      await fetch(`/destroy/${currentRoom}`, { method: "DELETE" });
+      document.getElementById("messages").innerHTML = "";
+      addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
+
+      lastPersistedTs = null;
+      Storage.remove("chat_name");
+      Storage.remove("chat_room");
+
+      joinedRooms.delete(currentRoom);
+      currentRoom = "";
+
+      document.getElementById("chat-container").style.display = "none";
+      document.getElementById("input-area").style.display = "none";
+      document.getElementById("intro").style.display = "block";
+      document.getElementById("messages").style.display = "none";
+    }
+
+    function leaveRoom() {
+      if (!currentRoom) { alert("You are not in a room!"); return; }
+      socket.emit("leave", { room: currentRoom, sender: currentName });
+
+      document.getElementById("input").disabled = true;
+      document.getElementById("send").disabled = true;
+      document.getElementById("attach").disabled = true;
+
+      addMessage({ sender: "System", text: `You left room "${currentRoom}".`, ts: new Date().toISOString() });
+
+      lastPersistedTs = null;
+      joinedRooms.delete(currentRoom);
+      currentRoom = "";
+
+      // ✅ clear session
+      Storage.remove("chat_name");
+      Storage.remove("chat_room");
+
+      document.getElementById("user-list").innerHTML = "";
+      document.getElementById("chat-container").style.display = "flex";
+      document.getElementById("input-area").style.display = "none";
+    }
+
+    window.addEventListener("offline", () => {
+      if (socket && socket.connected) {
+        socket.emit("manual_disconnect", { sender: currentName, room: currentRoom });
+        socket.disconnect();
+      }
+    });
+
+    let reconnectTimer;
+    window.addEventListener("online", () => {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        if (socket && !socket.connected && currentRoom && currentName) {
+          socket.connect();
+          socket.emit("manual_reconnect", {
+            room: currentRoom,
+            sender: currentName,
+            lastTs: lastPersistedTs || null,
+          });
+        }
+      }, 300);
+    });
+
+    // 🔹 Ensure server removes user on reload/close
+    window.addEventListener("beforeunload", () => {
+      if (socket && currentRoom && currentName && socket.connected) {
+        socket.emit("manual_disconnect", { room: currentRoom, sender: currentName });
+        // optional: disconnect socket
+        // socket.disconnect();
+      }
+    });
+
+    // 🔹 Delay auto-restore join slightly to avoid race
+    window.addEventListener("load", () => {
+      const savedName = Storage.get("chat_name");
+      const savedRoom = Storage.get("chat_room");
+      if (savedName && savedRoom) {
+        setTimeout(() => {
+          document.getElementById("name").value = savedName;
+          document.getElementById("room").value = savedRoom;
+          joinRoom();
+        }, 300); // 300ms ensures disconnect cleanup completes
+      }
+    });
 </script>
 
 </body>
-
 </html>
