@@ -13,7 +13,7 @@ import aiohttp
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
-
+LAST_MESSAGE = {}  # {sid: (text, ts)}
 
 # ---------------- Database ----------------
 def init_db():
@@ -186,8 +186,13 @@ async def join(sid, data):
     if room not in ROOM_USERS:
         ROOM_USERS[room] = {}
 
-    # if username already in room, replace old sid
     old_sid = ROOM_USERS[room].get(username)
+
+    # 👉 Already joined with same sid → do nothing
+    if old_sid == sid:
+        return {"success": True, "message": "Already in room"}
+
+    # If joined from another device/browser → replace old sid
     if old_sid and old_sid != sid:
         try:
             await sio.leave_room(old_sid, room)
@@ -198,7 +203,7 @@ async def join(sid, data):
     await sio.enter_room(sid, room)
     await broadcast_users(room)
 
-    # send missed messages
+    # Send only missed messages
     for sender_, text, filename, mimetype, filedata, ts in load_messages(room):
         if last_ts and ts <= last_ts:
             continue
@@ -219,7 +224,7 @@ async def join(sid, data):
                 "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
             )
 
-    # optional: suppress joined msg if it’s a reload
+    # Don’t send "joined" system msg on reload
     if not old_sid:
         await sio.emit(
             "message",
@@ -231,19 +236,31 @@ async def join(sid, data):
             room=room,
         )
 
+    return {"success": True}
+
 
 @sio.event
 async def message(sid, data):
     room = data["room"]
+    text = data["text"].strip()
+    now = datetime.now(timezone.utc)
+
+    # prevent duplicate within 1 second
+    last = LAST_MESSAGE.get(sid)
+    if last and last[0] == text and (now - last[1]).total_seconds() < 1:
+        return
+    LAST_MESSAGE[sid] = (text, now)
+
     if room in DESTROYED_ROOMS:
         return
-    save_message(room, data["sender"], text=data["text"])
+
+    save_message(room, data["sender"], text=text)
     await sio.emit(
         "message",
         {
             "sender": data["sender"],
-            "text": data["text"],
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "text": text,
+            "ts": now.isoformat(),
         },
         room=room,
     )
