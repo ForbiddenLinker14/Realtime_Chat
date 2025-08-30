@@ -829,7 +829,7 @@
     let sending = false;
 
     function sendMessage() {
-      if (sending) return; // prevent double sends
+      if (sending) return; // prevent double send
       const text = document.getElementById("input").value.trim();
       if (!text || !currentRoom) return;
 
@@ -837,12 +837,12 @@
       document.getElementById("send").disabled = true;
 
       socket.emit("message", { room: currentRoom, sender: currentName, text }, () => {
-        // ack callback
+        // ack callback (optional, socket.io supports it)
         sending = false;
         document.getElementById("send").disabled = false;
       });
 
-      // safety timeout in case ack never comes
+      // fallback reset in case ack doesn’t return
       setTimeout(() => {
         sending = false;
         document.getElementById("send").disabled = false;

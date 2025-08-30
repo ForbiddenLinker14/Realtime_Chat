@@ -13,7 +13,8 @@ import aiohttp
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
-LAST_MESSAGE = {}  # {sid: (text, ts)}
+LAST_MESSAGE = {}  # {(room, username): (text, ts)}
+
 
 # ---------------- Database ----------------
 def init_db():
@@ -242,23 +243,29 @@ async def join(sid, data):
 @sio.event
 async def message(sid, data):
     room = data["room"]
-    text = data["text"].strip()
+    sender = data["sender"]
+    text = (data["text"] or "").strip()
     now = datetime.now(timezone.utc)
 
-    # prevent duplicate within 1 second
-    last = LAST_MESSAGE.get(sid)
-    if last and last[0] == text and (now - last[1]).total_seconds() < 1:
+    if not text:
+        return  # ignore empty
+
+    key = (room, sender)
+    last = LAST_MESSAGE.get(key)
+
+    # prevent duplicate within 1.5 sec
+    if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
         return
-    LAST_MESSAGE[sid] = (text, now)
+    LAST_MESSAGE[key] = (text, now)
 
     if room in DESTROYED_ROOMS:
         return
 
-    save_message(room, data["sender"], text=text)
+    save_message(room, sender, text=text)
     await sio.emit(
         "message",
         {
-            "sender": data["sender"],
+            "sender": sender,
             "text": text,
             "ts": now.isoformat(),
         },
