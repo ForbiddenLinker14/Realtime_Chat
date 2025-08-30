@@ -617,6 +617,25 @@
   </div>
 
   <script>
+  // ✅ Storage fallback (localStorage → sessionStorage → cookies)
+  const Storage = {
+    set(k, v) {
+      try { localStorage.setItem(k, v); return; } catch {}
+      try { sessionStorage.setItem(k, v); return; } catch {}
+      document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
+    },
+    get(k) {
+      try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch {}
+      const m = document.cookie.match(new RegExp("(^| )"+k+"=([^;]+)"));
+      return m ? decodeURIComponent(m[2]) : null;
+    },
+    remove(k) {
+      try { localStorage.removeItem(k); } catch {}
+      try { sessionStorage.removeItem(k); } catch {}
+      document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    }
+  };
+
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("/sw.js")
@@ -647,12 +666,9 @@
     if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
     if (joinedRooms.has(currentRoom)) { alert("You are already in this room!"); return; }
 
-    // 🔥 Save to localStorage so reload can restore
-    localStorage.setItem("chat_name", currentName);
-    localStorage.setItem("chat_room", currentRoom);
-
-    // ❌ don't disconnect old socket here
-    // if (socket && socket.connected) socket.disconnect();
+    // 🔥 Save with fallback
+    Storage.set("chat_name", currentName);
+    Storage.set("chat_room", currentRoom);
 
     document.getElementById("messages").innerHTML = "";
     lastPersistedTs = null;
@@ -663,6 +679,14 @@
     document.getElementById("user-list").innerHTML = "";
 
     socket = io("/", { path: "/socket.io" });
+
+    // ✅ Reliable join wrapper
+    function safeJoin() {
+      if (!socket || !socket.connected) return;
+      socket.emit("join", { room: currentRoom, sender: currentName, lastTs: lastPersistedTs || null });
+      joinedRooms.add(currentRoom);
+      console.log("✅ Joined room:", currentRoom, "as", currentName);
+    }
 
     // ✅ users_update with duplicate guard
     socket.on("users_update", data => {
@@ -726,8 +750,8 @@
         document.getElementById("user-list").innerHTML = "";
 
         // 🔥 Clear storage when room destroyed
-        localStorage.removeItem("chat_name");
-        localStorage.removeItem("chat_room");
+        Storage.remove("chat_name");
+        Storage.remove("chat_room");
 
         document.getElementById("chat-container").style.display = "none";
         document.getElementById("input-area").style.display = "none";
@@ -745,8 +769,14 @@
     });
 
     socket.on("connect", () => {
-      socket.emit("join", { room: currentRoom, sender: currentName, lastTs: lastPersistedTs || null });
-      joinedRooms.add(currentRoom);
+      safeJoin();
+      // retry join after 500ms to fix reload race
+      setTimeout(() => {
+        if (socket && socket.connected && !joinedRooms.has(currentRoom)) {
+          console.log("⏳ Retrying join...");
+          safeJoin();
+        }
+      }, 500);
     });
 
     socket.on("message", data => addMessage(data));
@@ -854,8 +884,8 @@
     addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
 
     lastPersistedTs = null;
-    localStorage.removeItem("chat_name");
-    localStorage.removeItem("chat_room");
+    Storage.remove("chat_name");
+    Storage.remove("chat_room");
 
     joinedRooms.delete(currentRoom);
     currentRoom = "";
@@ -881,8 +911,8 @@
     currentRoom = "";
 
     // ✅ clear session
-    localStorage.removeItem("chat_name");
-    localStorage.removeItem("chat_room");
+    Storage.remove("chat_name");
+    Storage.remove("chat_room");
 
     document.getElementById("user-list").innerHTML = "";
     document.getElementById("chat-container").style.display = "flex";
@@ -911,10 +941,10 @@
     }, 300);
   });
 
-  // ✅ Auto-restore on reload
+  // ✅ Auto-restore on reload (with fallback)
   window.addEventListener("load", () => {
-    const savedName = localStorage.getItem("chat_name");
-    const savedRoom = localStorage.getItem("chat_room");
+    const savedName = Storage.get("chat_name");
+    const savedRoom = Storage.get("chat_room");
     if (savedName && savedRoom) {
       document.getElementById("name").value = savedName;
       document.getElementById("room").value = savedRoom;
@@ -922,7 +952,6 @@
     }
   });
 </script>
-
 
 </body>
 
