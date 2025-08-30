@@ -830,25 +830,26 @@
 
     function sendMessage() {
       if (sending) return; // prevent double send
-      const text = document.getElementById("input").value.trim();
+      const inputEl = document.getElementById("input");
+      const text = inputEl.value.trim();
       if (!text || !currentRoom) return;
 
       sending = true;
       document.getElementById("send").disabled = true;
 
       socket.emit("message", { room: currentRoom, sender: currentName, text }, () => {
-        // ack callback (optional, socket.io supports it)
+        // ACK received
         sending = false;
         document.getElementById("send").disabled = false;
       });
 
-      // fallback reset in case ack doesn’t return
+      // fallback reset in case ACK doesn’t return
       setTimeout(() => {
         sending = false;
         document.getElementById("send").disabled = false;
       }, 500);
 
-      document.getElementById("input").value = "";
+      inputEl.value = "";
     }
 
     function addMessage(data) {
