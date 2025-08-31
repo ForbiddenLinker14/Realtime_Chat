@@ -51,26 +51,59 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-self.addEventListener("push", function(event) {
+// ✅ Handle push events with room info + active check
+self.addEventListener("push", event => {
+  const data = event.data ? event.data.json() : {};
+  console.log("📩 Push event received:", data);
+
   event.waitUntil((async () => {
     const allClients = await clients.matchAll({ includeUncontrolled: true });
     let isClientFocused = allClients.some(client => client.focused);
 
     if (!isClientFocused) {
-      // Show notification only if no client is focused
-      self.registration.showNotification("Title", {
-        body: "Message text",
-        icon: "/icon.png"
-      });
+      // Show system notification if no client focused
+      const title = data.room ? `Room: ${data.room}` : "Realtime Chat";
+      const options = {
+        body: data.body || "New message",
+        icon: "/icons/icon-192.png",
+        badge: "/icons/icon-192.png",
+        data: {
+          url: data.url || `/chat/${data.room || ""}`,
+          room: data.room || null
+        }
+      };
+
+      self.registration.showNotification(title, options);
     } else {
-      // Optionally send message to client instead of showing notification
+      // Send message to client (handle inside app UI, e.g. toast)
       allClients.forEach(client => {
         client.postMessage({
           type: "PUSH_MESSAGE",
-          title: "Title",
-          body: "Message text"
+          room: data.room || null,
+          body: data.body || "New message",
+          url: data.url || `/chat/${data.room || ""}`
         });
       });
     }
   })());
 });
+
+// ✅ Handle click on notification
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
+      if (clientsArr.length > 0) {
+        const client = clientsArr[0];
+        client.focus();
+        if (event.notification.data?.url) {
+          client.navigate(event.notification.data.url);
+        }
+      } else {
+        clients.openWindow(event.notification.data?.url || "/");
+      }
+    })
+  );
+});
+
