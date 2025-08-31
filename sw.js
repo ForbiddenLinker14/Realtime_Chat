@@ -94,33 +94,17 @@ self.addEventListener("push", event => {
     }
   }
 
+  // Always use custom title
   const title = "Realtime Chat";
 
   const options = {
-    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}`,
+    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}\n${relativeTime}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
       url: data.url || "/",
-      messageId: data.messageId || null,
-      chatId: data.chatId || null
-    },
-    actions: [
-      {
-        action: "reply",
-        title: "Reply",
-        type: "text",          // ✅ Android Chrome only: inline text input
-        placeholder: "Type a reply…"
-      },
-      {
-        action: "mark-as-read",
-        title: "Mark as Read"
-      },
-      {
-        action: "mute",
-        title: "Mute"
-      }
-    ]
+      timestamp: data.timestamp
+    }
   };
 
   event.waitUntil(
@@ -128,56 +112,9 @@ self.addEventListener("push", event => {
   );
 });
 
-// Handle action button clicks
 self.addEventListener("notificationclick", event => {
   event.notification.close();
 
-  // Handle action buttons
-  if (event.action === "reply") {
-    const replyText = event.reply; // ✅ Chrome on Android only
-    console.log("User reply:", replyText);
-
-    // Send reply to your server (fetch/WebSocket)
-    if (replyText) {
-      fetch("/api/reply", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: event.notification.data.chatId,
-          messageId: event.notification.data.messageId,
-          reply: replyText
-        })
-      });
-    }
-    return;
-  }
-
-  if (event.action === "mark-as-read") {
-    console.log("Message marked as read");
-    fetch("/api/mark-read", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chatId: event.notification.data.chatId,
-        messageId: event.notification.data.messageId
-      })
-    });
-    return;
-  }
-
-  if (event.action === "mute") {
-    console.log("Chat muted");
-    fetch("/api/mute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chatId: event.notification.data.chatId
-      })
-    });
-    return;
-  }
-
-  // Default click (if no action button was clicked)
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
       if (clientsArr.length > 0) {
@@ -192,9 +129,3 @@ self.addEventListener("notificationclick", event => {
     })
   );
 });
-
-
-
-
-
-
