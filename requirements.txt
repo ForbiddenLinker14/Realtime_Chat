@@ -1,5 +1,15 @@
+# Runtime dependencies
 fastapi
 uvicorn[standard]
 python-socketio[asyncio]
 aiofiles
 aiohttp
+pywebpush
+python-dotenv
+cryptography
+pydantic
+httpx
+jinja2
+watchfiles
+
+
