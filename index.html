@@ -789,24 +789,58 @@
       document.getElementById("fileInput").onchange = handleFileUpload;
     }
 
-    async function sendMessage(room, sender, text) {
-      let sub = null;
+    // ✅ FINAL UPDATED sendMessage
+    async function sendMessage() {
+      if (sending) return;
+      const inputEl = document.getElementById("input");
+      const text = inputEl.value.trim();
+      if (!text || !currentRoom) return;
+
+      sending = true;
+      document.getElementById("send").disabled = true;
+
       try {
         const registration = await navigator.serviceWorker.ready;
-        sub = await registration.pushManager.getSubscription();
-        if (sub) {
-          sub = sub.toJSON();  // 👈 convert so server gets endpoint
+        let sub = await registration.pushManager.getSubscription();
+        if (!sub) {
+          sub = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey
+          });
+          console.log("✅ New push subscription created:", sub.toJSON());
+        } else {
+          console.log("📌 Existing subscription:", sub.toJSON());
         }
-      } catch (e) {
-        console.warn("No push subscription found", e);
+
+        socket.emit("message", {
+          room: currentRoom,
+          sender: currentName,
+          text,
+          subscription: sub ? sub.toJSON() : null
+        }, () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        });
+
+      } catch (err) {
+        console.error("❌ Failed to get subscription:", err);
+        socket.emit("message", {
+          room: currentRoom,
+          sender: currentName,
+          text,
+          subscription: null
+        }, () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        });
       }
 
-      socket.emit("message", {
-        room,
-        sender,
-        text,
-        subscription: sub   // 👈 send my own subscription
-      });
+      setTimeout(() => {
+        sending = false;
+        document.getElementById("send").disabled = false;
+      }, 1000);
+
+      inputEl.value = "";
     }
 
     function addMessage(data) {
