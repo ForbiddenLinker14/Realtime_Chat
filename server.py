@@ -488,20 +488,18 @@ async def subscribe(request: Request):
 @app.post("/send-push-notification")
 async def send_push_notification():
     payload = {"title": "Test Message", "body": "This is a test notification."}
-    for user, subs in subscriptions.copy().items():
-        for sub in subs:
-            try:
-                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
-                webpush(
-                    subscription_info=sub,
-                    data=json.dumps(payload),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": "mailto:example@domain.com"},
-                )
-            except WebPushException as e:
-                print(f"❌ Push failed for {user}: {e}")
+    for sub in subscriptions.copy():
+        try:
+            print(f"📤 Sending push to {sub['endpoint'][:50]}...")
+            webpush(
+                subscription_info=sub,
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:example@domain.com"},
+            )
+        except WebPushException as e:
+            print(f"❌ Push failed: {e}")
     return {"status": "Push notification sent"}
-
 
 # ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
