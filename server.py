@@ -15,11 +15,13 @@ from pywebpush import webpush, WebPushException
 from dotenv import load_dotenv
 
 
+# ---------------- Globals ----------------
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
 subscriptions: dict[str, list[dict]] = {}  # username -> [subscription objects]
+
 
 # Load environment variables
 load_dotenv()
@@ -282,7 +284,7 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 sender’s subscription
+    sender_sub = data.get("subscription")  # 👈 sender’s subscription object
     now = datetime.now(timezone.utc)
 
     if not text:
@@ -301,18 +303,13 @@ async def message(sid, data):
     # ✅ Save to DB
     save_message(room, sender, text=text)
 
-    # ✅ Emit to room (socket.io message delivery)
+    # ✅ Emit to room (real-time via socket.io)
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
         room=room,
     )
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
-
-    # ✅ Debug: log incoming subscription
-    print(
-        f"📥 Incoming message: sender={sender}, room={room}, subscription={bool(sender_sub)}"
-    )
 
     # ✅ Build push payload
     payload = {
@@ -330,13 +327,13 @@ async def message(sid, data):
     else:
         print("⚠️ No subscription provided with message")
 
-    # ✅ Loop over subscriptions
+    # ✅ Iterate over all users’ subscriptions (global dict)
     for user, subs in subscriptions.copy().items():
         for sub in subs:
-            # Normalize target endpoint too
-            target_endpoint = normalize_endpoint(sub.get("endpoint"))
+            if not sub:
+                continue
 
-            # 🔍 Debug comparison
+            target_endpoint = normalize_endpoint(sub.get("endpoint"))
             print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
             # 🚫 Skip only the exact sender device
@@ -354,6 +351,8 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
+
+
 
 @sio.event
 async def file(sid, data):

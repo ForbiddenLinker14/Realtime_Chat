@@ -789,59 +789,49 @@
       document.getElementById("fileInput").onchange = handleFileUpload;
     }
 
-    // ✅ FINAL UPDATED sendMessage
-    async function sendMessage() {
-      if (sending) return;
-      const inputEl = document.getElementById("input");
-      const text = inputEl.value.trim();
-      if (!text || !currentRoom) return;
+    // ✅ FINAL sendMessage (force subscription always)
+async function sendMessage() {
+  if (sending) return;
+  const inputEl = document.getElementById("input");
+  const text = inputEl.value.trim();
+  if (!text || !currentRoom) return;
 
-      sending = true;
-      document.getElementById("send").disabled = true;
+  sending = true;
+  document.getElementById("send").disabled = true;
 
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        let sub = await registration.pushManager.getSubscription();
-        if (!sub) {
-          sub = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey
-          });
-          console.log("✅ New push subscription created:", sub.toJSON());
-        } else {
-          console.log("📌 Existing subscription:", sub.toJSON());
-        }
+  try {
+    // 🔑 Ensure subscription exists and is saved
+    await subscribeUser(currentName);
 
-        socket.emit("message", {
-          room: currentRoom,
-          sender: currentName,
-          text,
-          subscription: sub ? sub.toJSON() : null
-        }, () => {
-          sending = false;
-          document.getElementById("send").disabled = false;
-        });
+    const registration = await navigator.serviceWorker.ready;
+    const sub = await registration.pushManager.getSubscription();
 
-      } catch (err) {
-        console.error("❌ Failed to get subscription:", err);
-        socket.emit("message", {
-          room: currentRoom,
-          sender: currentName,
-          text,
-          subscription: null
-        }, () => {
-          sending = false;
-          document.getElementById("send").disabled = false;
-        });
-      }
+    socket.emit("message", {
+      room: currentRoom,
+      sender: currentName,
+      text,
+      subscription: sub ? sub.toJSON() : null
+    }, () => {
+      sending = false;
+      document.getElementById("send").disabled = false;
+    });
 
-      setTimeout(() => {
-        sending = false;
-        document.getElementById("send").disabled = false;
-      }, 1000);
+  } catch (err) {
+    console.error("❌ Subscription error:", err);
+    socket.emit("message", {
+      room: currentRoom,
+      sender: currentName,
+      text,
+      subscription: null
+    }, () => {
+      sending = false;
+      document.getElementById("send").disabled = false;
+    });
+  }
 
-      inputEl.value = "";
-    }
+  inputEl.value = "";
+}
+
 
     function addMessage(data) {
       const messages = document.getElementById("messages");
