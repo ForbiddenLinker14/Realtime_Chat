@@ -469,7 +469,7 @@ async def startup_tasks():
             await asyncio.sleep(3600)
 
     async def ping_self():
-        url = "http://127.0.0.1:8000"
+        url = "https://realtime-chat-1mv3.onrender.com"
         while True:
             try:
                 async with aiohttp.ClientSession() as session:

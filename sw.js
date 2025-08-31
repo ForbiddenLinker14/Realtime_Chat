@@ -207,14 +207,29 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "reply") {
-      // Focus/open app and tell page to prefill reply UI
+      const replyText = event.reply; // ✅ only available on Android inline replies
       const client = await focusOrOpen(targetUrl);
+
       if (client) {
-        client.postMessage({
-          type: "NOTIF_REPLY",
-          room,
-          hint: payload?.timestamp ? `Replying to message at ${payload.timestamp}` : "Replying…"
-        });
+        if (replyText) {
+          // If actual reply text captured → send it to page
+          client.postMessage({
+            type: "NOTIF_REPLY",
+            room,
+            reply: replyText,
+            pushId: payload.pushId,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          // Fallback → just trigger reply UI with hint
+          client.postMessage({
+            type: "NOTIF_REPLY",
+            room,
+            hint: payload?.timestamp
+              ? `Replying to message at ${payload.timestamp}`
+              : "Replying…"
+          });
+        }
       }
       return;
     }
@@ -237,14 +252,13 @@ self.addEventListener("notificationclick", event => {
     if (action === "mute" || action === "unmute") {
       if (room) {
         const mute = await getMuteSet();
-        if (action === "mute") mute.add(room); else mute.delete(room);
+        if (action === "mute") mute.add(room);
+        else mute.delete(room);
         await setMuteSet(mute);
       }
       // Give the page a heads-up (if open) to update UI
       const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
       clientList.forEach(c => c.postMessage({ type: "MUTE_CHANGED", room, muted: action === "mute" }));
-      // No need to focus the app; but we can:
-      // await focusOrOpen(targetUrl);
       return;
     }
 
@@ -252,4 +266,5 @@ self.addEventListener("notificationclick", event => {
     await focusOrOpen(targetUrl);
   })());
 });
+
 
