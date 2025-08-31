@@ -1,7 +1,7 @@
 # ---------------- server.py ----------------
 import sqlite3
 from datetime import datetime, timezone
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 import socketio
 import socket
@@ -9,12 +9,22 @@ import os
 import asyncio
 from fastapi.staticfiles import StaticFiles
 import aiohttp
+import json
+from fastapi.responses import JSONResponse
+from pywebpush import webpush, WebPushException
+from dotenv import load_dotenv
+
 
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
+subscriptions = {}  # Dict: endpoint -> subscription
 
+# Load environment variables
+load_dotenv()
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
 
 # ---------------- Database ----------------
 def init_db():
@@ -129,11 +139,22 @@ sio = socketio.AsyncServer(
     ping_interval=3,
     ping_timeout=5,
 )
-app = FastAPI()
-sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
-app.mount("/socket.io", sio_app)
 
+app = FastAPI()
+sio = socketio.AsyncServer(async_mode="asgi")
+sio_app = socketio.ASGIApp(
+    sio,
+    socketio_path="socket.io",
+)
+app.mount("/socket.io", sio_app)
+sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# app = FastAPI()
+# sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
+# app.mount("/socket.io", sio_app)
+
+# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 # ---------------- Helper ----------------
@@ -242,18 +263,17 @@ async def join(sid, data):
 
 @sio.event
 async def message(sid, data):
-    room = data["room"]
-    sender = data["sender"]
-    text = (data["text"] or "").strip()
+    room = data.get("room")
+    sender = data.get("sender")
+    text = (data.get("text") or "").strip()
     now = datetime.now(timezone.utc)
 
     if not text:
-        return  # ignore empty
+        return
 
+    # 🛑 Avoid duplicates from same sender within 1.5s
     key = (room, sender)
     last = LAST_MESSAGE.get(key)
-
-    # prevent duplicate within 1.5 sec
     if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
         return
     LAST_MESSAGE[key] = (text, now)
@@ -261,16 +281,39 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
+    # ✅ Save message to DB so it survives reload
     save_message(room, sender, text=text)
+
+    # ✅ Emit message to all room members
     await sio.emit(
         "message",
-        {
-            "sender": sender,
-            "text": text,
-            "ts": now.isoformat(),
-        },
+        {"sender": sender, "text": text, "ts": now.isoformat()},
         room=room,
     )
+    print(f"🟢 Message emitted in room {room}: {sender}: {text}")
+
+    # ✅ Push notification payload
+    payload = {
+        "title": f"New message in {room}",
+        "body": f"{sender}: {text}",
+        "url": f"/?room={room}",
+    }
+
+    # ✅ Loop over all subscriptions and skip sender
+    for user, sub in subscriptions.copy().items():
+        if user == sender:
+            continue  # 👈 skip sender
+
+        try:
+            print(f"📤 Sending push to {user} ({sub['endpoint'][:50]})...")
+            webpush(
+                subscription_info=sub,
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
+            )
+        except WebPushException as e:
+            print(f"❌ Push failed for {user}: {e}")
 
 
 @sio.event
@@ -370,6 +413,47 @@ async def startup_tasks():
 
     asyncio.create_task(loop_cleanup())
     asyncio.create_task(ping_self())
+
+
+# ----------------------
+# REST endpoint to subscribe
+# ----------------------
+@app.post("/api/subscribe")
+async def subscribe(request: Request):
+    body = await request.json()
+    subscription = body.get("subscription")
+    sender = body.get("sender")
+
+    # ✅ validate input
+    if not sender or not subscription:
+        return JSONResponse(
+            {"error": "sender + subscription required"}, status_code=400
+        )
+
+    # ✅ save subscription
+    subscriptions[sender] = subscription
+    print(f"✅ Subscription saved for {sender}")
+    return {"message": f"Subscribed {sender}"}
+
+
+# ----------------------
+# Test push endpoint
+# ----------------------
+@app.post("/send-push-notification")
+async def send_push_notification():
+    payload = {"title": "Test Message", "body": "This is a test notification."}
+    for sub in subscriptions.copy():
+        try:
+            print(f"📤 Sending push to {sub['endpoint'][:50]}...")
+            webpush(
+                subscription_info=sub,
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:example@domain.com"},
+            )
+        except WebPushException as e:
+            print(f"❌ Push failed: {e}")
+    return {"status": "Push notification sent"}
 
 
 # ---------------- Static Files ----------------

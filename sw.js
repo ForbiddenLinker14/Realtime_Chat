@@ -50,3 +50,45 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+self.addEventListener("push", event => {
+  const data = event.data ? event.data.json() : {};
+  console.log("📩 Push event received:", data);
+
+  const options = {
+    body: data.body || "No body",
+    icon: "/icons/icon-192.png",     // 👈 Your custom app icon
+    badge: "/icons/icon-192.png",    // 👈 Optional: small monochrome badge (shown in status bar on mobile)
+    data: {
+      url: data.url || "/"   // 👈 pass URL into notification
+    }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "New Message", options)
+  );
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
+      if (clientsArr.length > 0) {
+        // focus first existing tab
+        const client = clientsArr[0];
+        client.focus();
+        if (event.notification.data?.url) {
+          client.navigate(event.notification.data.url);
+        }
+      } else {
+        // open new tab
+        clients.openWindow(event.notification.data?.url || "/");
+      }
+    })
+  );
+});
+
+
+
+
