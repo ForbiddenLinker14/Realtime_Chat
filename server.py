@@ -22,7 +22,6 @@ ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
 subscriptions: dict[str, list[dict]] = {}  # username -> [subscription objects]
 
-
 # Load environment variables
 load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
@@ -328,6 +327,7 @@ async def message(sid, data):
         print("⚠️ No subscription provided with message")
 
     # ✅ Iterate over all users’ subscriptions (global dict)
+    # ✅ Iterate over all users’ subscriptions
     for user, subs in subscriptions.copy().items():
         for sub in subs:
             if not sub:
@@ -336,9 +336,14 @@ async def message(sid, data):
             target_endpoint = normalize_endpoint(sub.get("endpoint"))
             print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
-            # 🚫 Skip only the exact sender device
+            # 🚫 Skip exact sender device (same endpoint)
             if sender_endpoint and target_endpoint == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
+                continue
+
+            # 🚫 Extra fallback: skip ALL of sender’s subs if no endpoint provided
+            if not sender_endpoint and user == sender:
+                print(f"⏭️ Skipping all pushes for sender {sender} (no endpoint info)")
                 continue
 
             try:
@@ -351,7 +356,6 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
-
 
 
 @sio.event
