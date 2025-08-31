@@ -332,8 +332,7 @@ async def message(sid, data):
         "message", {"sender": sender, "text": text, "ts": now.isoformat()}, room=room
     )
     print(f"🟢 {room} | {sender}: {text}")
-    # generate pushId first
-    push_id = make_push_id(room, sender, text, now.isoformat())
+
     payload = {
         "title": "Realtime Chat",
         "sender": sender,
@@ -341,9 +340,9 @@ async def message(sid, data):
         "room": room,
         "url": f"/?room={room}",
         "timestamp": now.isoformat(),
-        "pushId": push_id,
     }
-    
+    push_id = make_push_id(room, sender, text, payload["timestamp"])
+
     sender_endpoint = None
     if sender_sub and isinstance(sender_sub, dict):
         sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))

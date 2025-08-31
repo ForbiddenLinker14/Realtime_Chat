@@ -616,23 +616,23 @@
     </div>
   </div>
 
-
+  
   <script>
     // =============== Storage with graceful fallback ===============
     const Storage = {
       set(k, v) {
-        try { localStorage.setItem(k, v); return; } catch { }
-        try { sessionStorage.setItem(k, v); return; } catch { }
+        try { localStorage.setItem(k, v); return; } catch {}
+        try { sessionStorage.setItem(k, v); return; } catch {}
         document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
       },
       get(k) {
-        try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch { }
+        try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch {}
         const m = document.cookie.match(new RegExp("(^| )" + k + "=([^;]+)"));
         return m ? decodeURIComponent(m[2]) : null;
       },
       remove(k) {
-        try { localStorage.removeItem(k); } catch { }
-        try { sessionStorage.removeItem(k); } catch { }
+        try { localStorage.removeItem(k); } catch {}
+        try { sessionStorage.removeItem(k); } catch {}
         document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       }
     };
@@ -999,7 +999,7 @@
     });
 
     // Simple XSS-safe helpers for text we inject into HTML
-    function escapeHtml(s) { return (s ?? "").replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+    function escapeHtml(s) { return (s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
 
     // Initial setup
@@ -1022,33 +1022,6 @@
         setTimeout(() => joinRoom(), 600);
       } else {
         document.getElementById("intro").style.display = "block";
-      }
-    });
-
-    // ==================================================
-    // Listen for messages from the service worker
-    // ==================================================
-    navigator.serviceWorker.addEventListener("message", event => {
-      const msg = event.data;
-
-      if (msg.type === "NOTIF_REPLY") {
-        const room = msg.room;
-
-        if (msg.reply) {
-          // ✅ Got inline reply (Android only)
-          sendMessage({
-            room,
-            text: msg.reply,
-            sender: currentUserName
-          });
-        } else if (msg.hint) {
-          // ✅ Desktop fallback → show UI with prefilled text
-          const input = document.querySelector("#chat-input");
-          if (input) {
-            input.value = msg.hint + " ";
-            input.focus();
-          }
-        }
       }
     });
   </script>
