@@ -262,6 +262,11 @@ async def join(sid, data):
     return {"success": True}
 
 
+def normalize_endpoint(endpoint: str) -> str:
+    """Remove query params or trailing differences so endpoints compare reliably."""
+    return endpoint.split("?")[0] if endpoint else endpoint
+
+
 @sio.event
 async def message(sid, data):
     room = data.get("room")
@@ -302,22 +307,25 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
-    # ✅ Extract sender endpoint
+    # ✅ Extract and normalize sender endpoint
     sender_endpoint = None
     if sender_sub and isinstance(sender_sub, dict):
-        sender_endpoint = sender_sub.get("endpoint")
+        sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))
         print(f"📌 Sender endpoint: {sender_endpoint}")
 
     # ✅ Loop over subscriptions
     for user, subs in subscriptions.copy().items():
         for sub in subs:
+            # Normalize target endpoint too
+            target_endpoint = normalize_endpoint(sub.get("endpoint"))
+
             # 🚫 Skip only the exact sender device
-            if sender_endpoint and sub.get("endpoint") == sender_endpoint:
+            if sender_endpoint and target_endpoint == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
 
             try:
-                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]})...")
+                print(f"📤 Sending push to {user} ({target_endpoint[:50]})...")
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
@@ -326,6 +334,7 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
+
 
 @sio.event
 async def file(sid, data):
