@@ -460,9 +460,6 @@ async def startup_tasks():
 # ----------------------
 # REST endpoint to subscribe
 # ----------------------
-subscriptions: dict[str, list[dict]] = {}
-
-
 @app.post("/api/subscribe")
 async def subscribe(request: Request):
     body = await request.json()
@@ -470,18 +467,20 @@ async def subscribe(request: Request):
     sender = body.get("sender")
 
     if not sender or not subscription:
-        return JSONResponse(
-            {"error": "sender + subscription required"}, status_code=400
-        )
+        return JSONResponse({"error": "sender + subscription required"}, status_code=400)
 
     subs = subscriptions.setdefault(sender, [])
-    # prevent duplicates
-    if subscription not in subs:
+
+    # ✅ Normalize endpoint for reliable deduplication
+    endpoint = normalize_endpoint(subscription.get("endpoint"))
+    if not endpoint:
+        return JSONResponse({"error": "invalid endpoint"}, status_code=400)
+
+    if all(normalize_endpoint(s.get("endpoint")) != endpoint for s in subs):
         subs.append(subscription)
 
     print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}"}
-
 
 # ----------------------
 # Test push endpoint

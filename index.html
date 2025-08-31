@@ -651,6 +651,7 @@
       try {
         const registration = await navigator.serviceWorker.ready;
         let subscription = await registration.pushManager.getSubscription();
+
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({
             userVisibleOnly: true,
@@ -661,12 +662,17 @@
           console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
         }
 
+        // ✅ Always save subscription locally (so sendMessage can attach it)
+        localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
+
+        // Send subscription to backend
         const body = { sender: sender || "anonymous", subscription: subscription.toJSON() };
         const response = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body)
         });
+
         const result = await response.json();
         console.log("✅ Backend response:", result.message);
       } catch (err) {
@@ -790,59 +796,59 @@
     }
 
     // ✅ FINAL sendMessage (always include saved subscription)
-async function sendMessage() {
-  if (sending) return;
+    async function sendMessage() {
+      if (sending) return;
 
-  const inputEl = document.getElementById("input");
-  const text = inputEl.value.trim();
-  if (!text || !currentRoom) return;
+      const inputEl = document.getElementById("input");
+      const text = inputEl.value.trim();
+      if (!text || !currentRoom) return;
 
-  sending = true;
-  document.getElementById("send").disabled = true;
+      sending = true;
+      document.getElementById("send").disabled = true;
 
-  try {
-    // 🔑 Ensure subscription exists and is stored in localStorage
-    await subscribeUser(currentName);
+      try {
+        // 🔑 Ensure subscription exists and is stored in localStorage
+        await subscribeUser(currentName);
 
-    // ✅ Pull from localStorage instead of pushManager directly
-    const savedSub = localStorage.getItem("pushSub");
-    const sub = savedSub ? JSON.parse(savedSub) : null;
+        // ✅ Pull from localStorage instead of pushManager directly
+        const savedSub = localStorage.getItem("pushSub");
+        const sub = savedSub ? JSON.parse(savedSub) : null;
 
-    console.log("🔑 Sub being sent:", sub);
+        console.log("🔑 Sub being sent:", sub);
 
-    socket.emit(
-      "message",
-      {
-        room: currentRoom,
-        sender: currentName,
-        text,
-        subscription: sub, // 👈 always attached from localStorage
-      },
-      () => {
-        sending = false;
-        document.getElementById("send").disabled = false;
+        socket.emit(
+          "message",
+          {
+            room: currentRoom,
+            sender: currentName,
+            text,
+            subscription: sub, // 👈 always attached from localStorage
+          },
+          () => {
+            sending = false;
+            document.getElementById("send").disabled = false;
+          }
+        );
+      } catch (err) {
+        console.error("❌ Subscription error:", err);
+
+        socket.emit(
+          "message",
+          {
+            room: currentRoom,
+            sender: currentName,
+            text,
+            subscription: null,
+          },
+          () => {
+            sending = false;
+            document.getElementById("send").disabled = false;
+          }
+        );
       }
-    );
-  } catch (err) {
-    console.error("❌ Subscription error:", err);
 
-    socket.emit(
-      "message",
-      {
-        room: currentRoom,
-        sender: currentName,
-        text,
-        subscription: null,
-      },
-      () => {
-        sending = false;
-        document.getElementById("send").disabled = false;
-      }
-    );
-  }
-
-  inputEl.value = "";
-}
+      inputEl.value = "";
+    }
 
     function addMessage(data) {
       const messages = document.getElementById("messages");
