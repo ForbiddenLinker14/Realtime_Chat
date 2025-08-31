@@ -51,28 +51,6 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// self.addEventListener("push", event => {
-//   const data = event.data ? event.data.json() : {};
-//   console.log("📩 Push event received:", data);
-
-//   const timestampText = data.timestamp
-//     ? `\nSent at: ${new Date(data.timestamp).toLocaleTimeString()}`
-//     : "";
-
-//   const options = {
-//     body: (data.body || "No body") + timestampText, // append timestamp
-//     icon: "/icons/icon-192.png",
-//     badge: "/icons/icon-192.png",
-//     data: {
-//       url: data.url || "/",
-//       timestamp: data.timestamp
-//     }
-//   };
-
-//   event.waitUntil(
-//     self.registration.showNotification(data.title || "New Message", options)
-//   );
-// });
 self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
@@ -94,11 +72,10 @@ self.addEventListener("push", event => {
     }
   }
 
-  // Always use custom title
   const title = "Realtime Chat";
 
   const options = {
-    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}\n${relativeTime}`,
+    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
@@ -112,9 +89,56 @@ self.addEventListener("push", event => {
   );
 });
 
+// Handle action button clicks
 self.addEventListener("notificationclick", event => {
   event.notification.close();
 
+  // Handle action buttons
+  if (event.action === "reply") {
+    const replyText = event.reply; // ✅ Chrome on Android only
+    console.log("User reply:", replyText);
+
+    // Send reply to your server (fetch/WebSocket)
+    if (replyText) {
+      fetch("/api/reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chatId: event.notification.data.chatId,
+          messageId: event.notification.data.messageId,
+          reply: replyText
+        })
+      });
+    }
+    return;
+  }
+
+  if (event.action === "mark-as-read") {
+    console.log("Message marked as read");
+    fetch("/api/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: event.notification.data.chatId,
+        messageId: event.notification.data.messageId
+      })
+    });
+    return;
+  }
+
+  if (event.action === "mute") {
+    console.log("Chat muted");
+    fetch("/api/mute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: event.notification.data.chatId
+      })
+    });
+    return;
+  }
+
+  // Default click (if no action button was clicked)
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
       if (clientsArr.length > 0) {
