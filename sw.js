@@ -205,12 +205,12 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "reply") {
-      const replyText = event.reply; // ✅ works only on Android
+      const replyText = event.reply; // ✅ Only works on Android
       const client = await focusOrOpen(targetUrl);
 
       if (client) {
         if (replyText) {
-          // ✅ Send inline reply text (Android only)
+          // ✅ Send inline reply text (Android)
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -219,7 +219,7 @@ self.addEventListener("notificationclick", event => {
             timestamp: new Date().toISOString()
           });
         } else {
-          // ✅ Desktop fallback → prefill UI
+          // ✅ Desktop fallback → prefill chat box
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -257,11 +257,7 @@ self.addEventListener("notificationclick", event => {
       return;
     }
 
-    // Default click → open chat
+    // Default click → open chat window
     await focusOrOpen(targetUrl);
   })());
 });
-
-
-
-

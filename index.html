@@ -1025,7 +1025,9 @@
       }
     });
 
-    // ✅ Listen for messages from the service worker (inline reply handling)
+    // ==================================================
+    // Listen for messages from the service worker
+    // ==================================================
     navigator.serviceWorker.addEventListener("message", event => {
       const msg = event.data;
 
@@ -1033,23 +1035,22 @@
         const room = msg.room;
 
         if (msg.reply) {
-          // ✅ Inline reply captured from notification (Android)
+          // ✅ Got inline reply (Android only)
           sendMessage({
             room,
             text: msg.reply,
-            sender: currentUserName // however you track user
+            sender: currentUserName
           });
         } else if (msg.hint) {
-          // ✅ No inline text (desktop), show UI prefill
-          const input = document.querySelector("#chat-input"); // adjust selector
+          // ✅ Desktop fallback → show UI with prefilled text
+          const input = document.querySelector("#chat-input");
           if (input) {
-            input.value = msg.hint + " "; // prefill text area
+            input.value = msg.hint + " ";
             input.focus();
           }
         }
       }
     });
-
   </script>
 
 
