@@ -97,7 +97,7 @@ self.addEventListener("push", event => {
   const title = "Realtime Chat";
 
   const options = {
-    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}\n${relativeTime}`,
+    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
@@ -109,14 +109,17 @@ self.addEventListener("push", event => {
       {
         action: "reply",
         title: "Reply",
-        type: "text",          // ✅ Android Chrome inline reply
+        type: "text",          // ✅ Android Chrome only: inline text input
         placeholder: "Type a reply…"
       },
       {
         action: "mark-as-read",
         title: "Mark as Read"
+      },
+      {
+        action: "mute",
+        title: "Mute"
       }
-      // ⚠️ If you add "mute" here, Chrome may hide one action (only 2 visible max with inline reply)
     ]
   };
 
@@ -125,63 +128,56 @@ self.addEventListener("push", event => {
   );
 });
 
+// Handle action button clicks
 self.addEventListener("notificationclick", event => {
   event.notification.close();
 
-  // Handle reply action
+  // Handle action buttons
   if (event.action === "reply") {
-    // Different Chrome versions use event.reply OR event.notificationReply
-    const replyText = event.reply || event.notificationReply;
+    const replyText = event.reply; // ✅ Chrome on Android only
     console.log("User reply:", replyText);
 
+    // Send reply to your server (fetch/WebSocket)
     if (replyText) {
-      event.waitUntil(
-        fetch("/api/reply", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId: event.notification.data.chatId,
-            messageId: event.notification.data.messageId,
-            reply: replyText
-          })
-        })
-      );
-    }
-    return;
-  }
-
-  // Handle mark as read
-  if (event.action === "mark-as-read") {
-    console.log("Message marked as read");
-    event.waitUntil(
-      fetch("/api/mark-read", {
+      fetch("/api/reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chatId: event.notification.data.chatId,
-          messageId: event.notification.data.messageId
+          messageId: event.notification.data.messageId,
+          reply: replyText
         })
-      })
-    );
+      });
+    }
     return;
   }
 
-  // Handle mute (if you decide to keep it instead of mark-as-read)
+  if (event.action === "mark-as-read") {
+    console.log("Message marked as read");
+    fetch("/api/mark-read", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: event.notification.data.chatId,
+        messageId: event.notification.data.messageId
+      })
+    });
+    return;
+  }
+
   if (event.action === "mute") {
     console.log("Chat muted");
-    event.waitUntil(
-      fetch("/api/mute", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chatId: event.notification.data.chatId
-        })
+    fetch("/api/mute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chatId: event.notification.data.chatId
       })
-    );
+    });
     return;
   }
 
-  // Default: open or focus app window
+  // Default click (if no action button was clicked)
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
       if (clientsArr.length > 0) {
@@ -196,7 +192,6 @@ self.addEventListener("notificationclick", event => {
     })
   );
 });
-
 
 
 
