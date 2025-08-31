@@ -267,7 +267,7 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 current device subscription
+    sender_sub = data.get("subscription")  # 👈 subscription object from client
     now = datetime.now(timezone.utc)
 
     if not text:
@@ -283,10 +283,9 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
-    # ✅ Save message
     save_message(room, sender, text=text)
 
-    # ✅ Emit to room members (realtime chat)
+    # ✅ Emit to socket members
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
@@ -295,7 +294,7 @@ async def message(sid, data):
 
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
-    # ✅ Push notification payload
+    # ✅ Notification payload
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
@@ -303,13 +302,17 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
-    # ✅ Skip only the sender's device (by endpoint)
-    sender_endpoint = sender_sub.get("endpoint") if sender_sub else None
+    # 👇 Extract sender endpoint
+    sender_endpoint = None
+    if sender_sub and isinstance(sender_sub, dict):
+        sender_endpoint = sender_sub.get("endpoint")
 
     for user, subs in subscriptions.copy().items():
         for sub in subs:
+            # ❌ Skip only the sender's device by endpoint
             if sender_endpoint and sub.get("endpoint") == sender_endpoint:
-                continue  # 👈 skip the sender's device only
+                print(f"⏭️ Skipping push to sender device ({sender_endpoint[:50]}...)")
+                continue
 
             try:
                 print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
