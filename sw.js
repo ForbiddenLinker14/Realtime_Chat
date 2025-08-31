@@ -51,20 +51,21 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ✅ Handle push events (no duplicate timestamp shown)
+// ✅ Handle push events with room info
 self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
 
   // Always use custom title
-  const title = "Realtime Chat";
+  const title = data.room ? `Room: ${data.room}` : "Realtime Chat";
 
   const options = {
     body: data.body || "New message",
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
-      url: data.url || "/",
+      url: data.url || `/chat/${data.room || ""}`, // Open room page if available
+      room: data.room || null
     }
   };
 
