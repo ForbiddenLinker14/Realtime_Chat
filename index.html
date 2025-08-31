@@ -801,6 +801,8 @@
       // ✅ Include this device's subscription so server can skip it
       navigator.serviceWorker.ready.then(registration => {
         registration.pushManager.getSubscription().then(sub => {
+          console.log("📌 Current subscription:", sub); // 👈 Debug log
+
           socket.emit("message", {
             room: currentRoom,
             sender: currentName,
@@ -813,6 +815,7 @@
         });
       });
 
+      // Fallback safety reset
       setTimeout(() => {
         sending = false;
         document.getElementById("send").disabled = false;

@@ -267,7 +267,7 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 the sender's device subscription
+    sender_sub = data.get("subscription")  # 👈 current device subscription
     now = datetime.now(timezone.utc)
 
     if not text:
@@ -283,17 +283,19 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
-    # ✅ Save message to DB so it survives reload
-    save_message(room, sender, text=text)  # you already have this function
+    # ✅ Save message
+    save_message(room, sender, text=text)
 
-    # ✅ Emit message to all room members
+    # ✅ Emit to room members (realtime chat)
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
         room=room,
     )
+
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
+    # ✅ Push notification payload
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
@@ -301,20 +303,22 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
+    # ✅ Skip only the sender's device (by endpoint)
+    sender_endpoint = sender_sub.get("endpoint") if sender_sub else None
+
     for user, subs in subscriptions.copy().items():
         for sub in subs:
-            # ✅ skip only the exact sender’s subscription
-            if sender_sub and sub.get("endpoint") == sender_sub.get("endpoint"):
-                continue
+            if sender_endpoint and sub.get("endpoint") == sender_endpoint:
+                continue  # 👈 skip the sender's device only
 
             try:
+                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
                     vapid_private_key=VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
                 )
-                print(f"📤 Push sent to {user} ({sub['endpoint'][:50]}...)")
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
 
