@@ -794,13 +794,30 @@
       const inputEl = document.getElementById("input");
       const text = inputEl.value.trim();
       if (!text || !currentRoom) return;
+
       sending = true;
       document.getElementById("send").disabled = true;
-      socket.emit("message", { room: currentRoom, sender: currentName, text }, () => {
+
+      // ✅ Include this device's subscription so server can skip it
+      navigator.serviceWorker.ready.then(registration => {
+        registration.pushManager.getSubscription().then(sub => {
+          socket.emit("message", {
+            room: currentRoom,
+            sender: currentName,
+            text,
+            subscription: sub ? sub.toJSON() : null   // 👈 attach subscription
+          }, () => {
+            sending = false;
+            document.getElementById("send").disabled = false;
+          });
+        });
+      });
+
+      setTimeout(() => {
         sending = false;
         document.getElementById("send").disabled = false;
-      });
-      setTimeout(() => { sending = false; document.getElementById("send").disabled = false; }, 500);
+      }, 500);
+
       inputEl.value = "";
     }
 

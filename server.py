@@ -19,7 +19,7 @@ DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
-subscriptions: dict[str, list[dict]] = {}   # username -> [subscription objects]
+subscriptions: dict[str, list[dict]] = {}  # username -> [subscription objects]
 
 # Load environment variables
 load_dotenv()
@@ -267,6 +267,7 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
+    sender_sub = data.get("subscription")  # 👈 the sender's device subscription
     now = datetime.now(timezone.utc)
 
     if not text:
@@ -293,7 +294,6 @@ async def message(sid, data):
     )
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
-    # ✅ Push notification payload
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
@@ -301,21 +301,20 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
-    # ✅ Loop over all subscriptions and skip ONLY the sending device
     for user, subs in subscriptions.copy().items():
         for sub in subs:
-            # Skip if this is the exact subscription used by the sender
-            if user == sender and data.get("subscription") == sub:
+            # ✅ skip only the exact sender’s subscription
+            if sender_sub and sub.get("endpoint") == sender_sub.get("endpoint"):
                 continue
 
             try:
-                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
                     vapid_private_key=VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
                 )
+                print(f"📤 Push sent to {user} ({sub['endpoint'][:50]}...)")
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
 
