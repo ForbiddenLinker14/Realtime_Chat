@@ -286,7 +286,7 @@ async def message(sid, data):
     # ✅ Save to DB
     save_message(room, sender, text=text)
 
-    # ✅ Emit to room
+    # ✅ Emit to room (socket.io message delivery)
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
@@ -311,7 +311,7 @@ async def message(sid, data):
     # ✅ Loop over subscriptions
     for user, subs in subscriptions.copy().items():
         for sub in subs:
-            # 🚫 Skip if endpoint matches sender’s subscription
+            # 🚫 Skip only the exact sender device
             if sender_endpoint and sub.get("endpoint") == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
@@ -326,7 +326,6 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
-
 
 @sio.event
 async def file(sid, data):
