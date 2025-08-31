@@ -51,16 +51,50 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// self.addEventListener("push", event => {
+//   const data = event.data ? event.data.json() : {};
+//   console.log("📩 Push event received:", data);
+
+//   const timestampText = data.timestamp
+//     ? `\nSent at: ${new Date(data.timestamp).toLocaleTimeString()}`
+//     : "";
+
+//   const options = {
+//     body: (data.body || "No body") + timestampText, // append timestamp
+//     icon: "/icons/icon-192.png",
+//     badge: "/icons/icon-192.png",
+//     data: {
+//       url: data.url || "/",
+//       timestamp: data.timestamp
+//     }
+//   };
+
+//   event.waitUntil(
+//     self.registration.showNotification(data.title || "New Message", options)
+//   );
+// });
 self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
 
-  const timestampText = data.timestamp
-    ? `\nSent at: ${new Date(data.timestamp).toLocaleTimeString()}`
-    : "";
+  let relativeTime = "Now"; // default
+  if (data.timestamp) {
+    const diffMs = Date.now() - new Date(data.timestamp).getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+
+    if (diffSec < 60) {
+      relativeTime = "Now";
+    } else if (diffSec < 3600) { // less than 1 hour
+      relativeTime = `${Math.floor(diffSec / 60)}m`;
+    } else if (diffSec < 86400) { // less than 1 day
+      relativeTime = `${Math.floor(diffSec / 3600)}h`;
+    } else {
+      relativeTime = `${Math.floor(diffSec / 86400)}d`;
+    }
+  }
 
   const options = {
-    body: (data.body || "No body") + timestampText, // append timestamp
+    body: `${data.body || "No body"}\n${relativeTime}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
