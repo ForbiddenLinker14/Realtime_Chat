@@ -457,6 +457,31 @@ async def send_push_notification():
     return {"status": "Push notification sent"}
 
 
+@app.post("/api/reply")
+async def api_reply(request: Request):
+    data = await request.json()
+    chat_id = data.get("chatId")
+    msg_id = data.get("messageId")
+    reply_text = data.get("reply")
+    sender = "PushReply"  # or identify user via subscription/session
+
+    if not chat_id or not reply_text:
+        return JSONResponse({"error": "Missing chatId or reply"}, status_code=400)
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Save in DB
+    save_message(chat_id, sender, text=reply_text)
+
+    # Emit to room
+    await sio.emit(
+        "message",
+        {"sender": sender, "text": reply_text, "ts": now},
+        room=chat_id,
+    )
+
+    print(f"📨 Push-reply in room {chat_id}: {reply_text}")
+    return {"status": "ok"}
 # ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
 
