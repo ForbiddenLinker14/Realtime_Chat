@@ -297,6 +297,7 @@ async def message(sid, data):
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
         "url": f"/?room={room}",
+        "timestamp": now.isoformat()  # 🕒 Add ISO timestamp
     }
 
     # ✅ Loop over all subscriptions and skip sender

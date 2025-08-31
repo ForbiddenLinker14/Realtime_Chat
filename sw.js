@@ -55,12 +55,17 @@ self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
 
+  const timestampText = data.timestamp
+    ? `\nSent at: ${new Date(data.timestamp).toLocaleTimeString()}`
+    : "";
+
   const options = {
-    body: data.body || "No body",
-    icon: "/icons/icon-192.png",     // 👈 Your custom app icon
-    badge: "/icons/icon-192.png",    // 👈 Optional: small monochrome badge (shown in status bar on mobile)
+    body: (data.body || "No body") + timestampText, // append timestamp
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
     data: {
-      url: data.url || "/"   // 👈 pass URL into notification
+      url: data.url || "/",
+      timestamp: data.timestamp
     }
   };
 
