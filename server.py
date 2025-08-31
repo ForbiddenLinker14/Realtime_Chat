@@ -19,12 +19,13 @@ DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
-subscriptions = {}  # Dict: endpoint -> subscription
+subscriptions: dict[str, list[dict]] = {}   # username -> [subscription objects]
 
 # Load environment variables
 load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
+
 
 # ---------------- Database ----------------
 def init_db():
@@ -282,7 +283,7 @@ async def message(sid, data):
         return
 
     # ✅ Save message to DB so it survives reload
-    save_message(room, sender, text=text)
+    save_message(room, sender, text=text)  # you already have this function
 
     # ✅ Emit message to all room members
     await sio.emit(
@@ -297,24 +298,26 @@ async def message(sid, data):
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
         "url": f"/?room={room}",
-        "timestamp": now.isoformat()  # 🕒 Add ISO timestamp
+        "timestamp": now.isoformat(),
     }
 
-    # ✅ Loop over all subscriptions and skip sender
-    for user, sub in subscriptions.copy().items():
-        if user == sender:
-            continue  # 👈 skip sender
+    # ✅ Loop over all subscriptions and skip ONLY the sending device
+    for user, subs in subscriptions.copy().items():
+        for sub in subs:
+            # Skip if this is the exact subscription used by the sender
+            if user == sender and data.get("subscription") == sub:
+                continue
 
-        try:
-            print(f"📤 Sending push to {user} ({sub['endpoint'][:50]})...")
-            webpush(
-                subscription_info=sub,
-                data=json.dumps(payload),
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
-            )
-        except WebPushException as e:
-            print(f"❌ Push failed for {user}: {e}")
+            try:
+                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
+                webpush(
+                    subscription_info=sub,
+                    data=json.dumps(payload),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
+                )
+            except WebPushException as e:
+                print(f"❌ Push failed for {user}: {e}")
 
 
 @sio.event
@@ -419,21 +422,26 @@ async def startup_tasks():
 # ----------------------
 # REST endpoint to subscribe
 # ----------------------
+subscriptions: dict[str, list[dict]] = {}
+
+
 @app.post("/api/subscribe")
 async def subscribe(request: Request):
     body = await request.json()
     subscription = body.get("subscription")
     sender = body.get("sender")
 
-    # ✅ validate input
     if not sender or not subscription:
         return JSONResponse(
             {"error": "sender + subscription required"}, status_code=400
         )
 
-    # ✅ save subscription
-    subscriptions[sender] = subscription
-    print(f"✅ Subscription saved for {sender}")
+    subs = subscriptions.setdefault(sender, [])
+    # prevent duplicates
+    if subscription not in subs:
+        subs.append(subscription)
+
+    print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}"}
 
 
@@ -455,6 +463,7 @@ async def send_push_notification():
         except WebPushException as e:
             print(f"❌ Push failed: {e}")
     return {"status": "Push notification sent"}
+
 
 # ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
