@@ -51,7 +51,9 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// --- tiny IndexedDB helpers (SW-safe, no external libs) ---
+// ==================================================
+// tiny IndexedDB helpers (SW-safe, no external libs)
+// ==================================================
 const DB_NAME = 'chat-settings';
 const DB_STORE = 'kv';
 
@@ -101,12 +103,11 @@ async function setLastReadMap(map) {
   await idbSet('lastRead', map);
 }
 
-// ---------------------------------------
+// ==================================================
 // PUSH: show actions (Reply / Mark read / Mute)
-// ---------------------------------------
+// ==================================================
 self.addEventListener('push', event => {
   const data = event.data ? event.data.json() : {};
-  // console.log("📩 Push event received:", data);
 
   event.waitUntil((async () => {
     const allClients = await clients.matchAll({ includeUncontrolled: true });
@@ -121,9 +122,7 @@ self.addEventListener('push', event => {
     // ---- respect mute + last-read ----
     const mute = await getMuteSet();
     if (room && mute.has(room)) {
-      // Silently drop if room is muted
-      // console.log('🔕 muted room, skipping notification:', room);
-      // still forward to focused clients
+      // 🔕 muted → don’t show notification, but forward if focused
       if (isClientFocused) {
         allClients.forEach(client => {
           client.postMessage({ type: "PUSH_MESSAGE", room, body, url: data.url || `/chat/${room}` });
@@ -135,7 +134,7 @@ self.addEventListener('push', event => {
     const lastRead = await getLastReadMap();
     const ts = data.timestamp || new Date().toISOString();
     if (room && lastRead[room] && ts <= lastRead[room]) {
-      // Older or equal to last-read -> skip showing
+      // already read → skip showing
       if (isClientFocused) {
         allClients.forEach(client => {
           client.postMessage({ type: "PUSH_MESSAGE", room, body, url: data.url || `/chat/${room}` });
@@ -144,6 +143,7 @@ self.addEventListener('push', event => {
       return;
     }
 
+    // ---- show notif if not focused ----
     if (!isClientFocused) {
       const isMuted = room ? mute.has(room) : false;
       const actions = [
@@ -156,7 +156,6 @@ self.addEventListener('push', event => {
         body,
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
-        // requireInteraction: true, // (optional) keep until user interacts
         tag: room ? `chat-${room}` : undefined,   // collapse per-room
         actions,
         data: {
@@ -183,9 +182,9 @@ self.addEventListener('push', event => {
   })());
 });
 
-// ---------------------------------------
+// ==================================================
 // NOTIFICATION CLICKS (with actions)
-// ---------------------------------------
+// ==================================================
 self.addEventListener("notificationclick", event => {
   const { action } = event;
   const payload = event.notification.data || {};
@@ -207,12 +206,12 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "reply") {
-      const replyText = event.reply; // ✅ only available on Android inline replies
+      const replyText = event.reply; // ✅ only Android inline reply
       const client = await focusOrOpen(targetUrl);
 
       if (client) {
         if (replyText) {
-          // If actual reply text captured → send it to page
+          // inline reply → send to page immediately
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -221,7 +220,7 @@ self.addEventListener("notificationclick", event => {
             timestamp: new Date().toISOString()
           });
         } else {
-          // Fallback → just trigger reply UI with hint
+          // fallback → trigger reply UI
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -235,7 +234,6 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "mark-read") {
-      // Persist lastRead for this room to at least this timestamp
       if (room) {
         const lastRead = await getLastReadMap();
         const ts = payload.timestamp || new Date().toISOString();
@@ -244,7 +242,6 @@ self.addEventListener("notificationclick", event => {
           await setLastReadMap(lastRead);
         }
       }
-      // Optionally focus the app
       await focusOrOpen(targetUrl);
       return;
     }
@@ -256,7 +253,6 @@ self.addEventListener("notificationclick", event => {
         else mute.delete(room);
         await setMuteSet(mute);
       }
-      // Give the page a heads-up (if open) to update UI
       const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
       clientList.forEach(c => c.postMessage({ type: "MUTE_CHANGED", room, muted: action === "mute" }));
       return;
@@ -266,5 +262,6 @@ self.addEventListener("notificationclick", event => {
     await focusOrOpen(targetUrl);
   })());
 });
+
 
 
