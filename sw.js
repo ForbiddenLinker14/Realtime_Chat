@@ -51,20 +51,24 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ✅ Handle push events with room info + active check
 self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
 
   event.waitUntil((async () => {
     const allClients = await clients.matchAll({ includeUncontrolled: true });
-    let isClientFocused = allClients.some(client => client.focused);
+    const isClientFocused = allClients.some(client => client.focused);
+
+    const title = data.title || "Realtime Chat";
+
+    // Build multi-line body
+    const roomLine = data.room ? `Room: ${data.room}` : "";
+    const msgLine = data.sender && data.text ? `${data.sender}: ${data.text}` : "New message";
+    const body = `${roomLine}\n${msgLine}`;
 
     if (!isClientFocused) {
-      // Show system notification if no client focused
-      const title = data.room ? `Room: ${data.room}` : "Realtime Chat";
       const options = {
-        body: data.body || "New message",
+        body: body,
         icon: "/icons/icon-192.png",
         badge: "/icons/icon-192.png",
         data: {
@@ -72,15 +76,13 @@ self.addEventListener("push", event => {
           room: data.room || null
         }
       };
-
-      self.registration.showNotification(title, options);
+      await self.registration.showNotification(title, options);
     } else {
-      // Send message to client (handle inside app UI, e.g. toast)
       allClients.forEach(client => {
         client.postMessage({
           type: "PUSH_MESSAGE",
           room: data.room || null,
-          body: data.body || "New message",
+          body: body,
           url: data.url || `/chat/${data.room || ""}`
         });
       });
@@ -88,10 +90,9 @@ self.addEventListener("push", event => {
   })());
 });
 
-// ✅ Handle click on notification
+// ✅ Notification click handler
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
       if (clientsArr.length > 0) {
@@ -106,4 +107,3 @@ self.addEventListener("notificationclick", event => {
     })
   );
 });
-

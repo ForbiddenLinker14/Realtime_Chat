@@ -20,22 +20,23 @@ from dotenv import load_dotenv
 # ---------------- Globals ----------------
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
-ROOM_USERS = {}         # { room: { username: sid } }
-LAST_MESSAGE = {}       # {(room, username): (text, ts)}
-subscriptions = {}      # username -> [subscription objects]
-USER_STATUS = {}        # sid -> {"user": username, "active": bool}
+ROOM_USERS = {}  # { room: { username: sid } }
+LAST_MESSAGE = {}  # {(room, username): (text, ts)}
+subscriptions = {}  # username -> [subscription objects]
+USER_STATUS = {}  # sid -> {"user": username, "active": bool}
 
 # Push de-duplication: per-endpoint recent payload IDs sent
-PUSH_RECENT = {}        # endpoint -> deque[(push_id, ts)]
+PUSH_RECENT = {}  # endpoint -> deque[(push_id, ts)]
 PUSH_RECENT_MAX = 100
 PUSH_RECENT_WINDOW = timedelta(seconds=30)
 
 # ---------------- Env / VAPID ----------------
 load_dotenv()
-VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")      # required on client to subscribe
-VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")    # required on server to send push
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")  # required on client to subscribe
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")  # required on server to send push
 if not (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY):
     print("⚠️  Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in your .env")
+
 
 # ---------------- DB ----------------
 def init_db():
@@ -58,6 +59,7 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 def migrate_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -69,6 +71,7 @@ def migrate_db():
     conn.commit()
     conn.close()
 
+
 def count_messages():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -76,6 +79,7 @@ def count_messages():
     n = c.fetchone()[0]
     conn.close()
     return n
+
 
 def cleanup_old_messages():
     conn = sqlite3.connect(DB_PATH)
@@ -86,6 +90,7 @@ def cleanup_old_messages():
     after = count_messages()
     conn.close()
     return before - after
+
 
 def save_message(room, sender, text=None, filename=None, mimetype=None, filedata=None):
     conn = sqlite3.connect(DB_PATH)
@@ -106,6 +111,7 @@ def save_message(room, sender, text=None, filename=None, mimetype=None, filedata
     conn.commit()
     conn.close()
 
+
 def load_messages(room):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -118,12 +124,14 @@ def load_messages(room):
     conn.close()
     return rows
 
+
 def clear_room(room):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("DELETE FROM messages WHERE room=?", (room,))
     conn.commit()
     conn.close()
+
 
 # ---------------- FastAPI + Socket.IO ----------------
 app = FastAPI()
@@ -140,10 +148,14 @@ app.mount("/socket.io", sio_app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
 # ---------------- Helpers ----------------
 async def broadcast_users(room):
-    users = [{"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})]
+    users = [
+        {"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})
+    ]
     await sio.emit("users_update", {"room": room, "users": users}, room=room)
+
 
 def normalize_endpoint(endpoint: str) -> str | None:
     if not endpoint:
@@ -154,9 +166,11 @@ def normalize_endpoint(endpoint: str) -> str | None:
     except Exception:
         return endpoint.split("?")[0] if endpoint else endpoint
 
+
 def make_push_id(room: str, sender: str, text: str, timestamp_iso: str) -> str:
     basis = f"{room}|{sender}|{text}|{timestamp_iso}"
     return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
 
 def should_send_push(endpoint: str, push_id: str, now: datetime) -> bool:
     dq = PUSH_RECENT.setdefault(endpoint, deque())
@@ -170,6 +184,7 @@ def should_send_push(endpoint: str, push_id: str, now: datetime) -> bool:
         dq.popleft()
     return True
 
+
 def user_active_foreground(username: str) -> bool:
     for users in ROOM_USERS.values():
         for uname, usid in users.items():
@@ -177,12 +192,16 @@ def user_active_foreground(username: str) -> bool:
                 return True
     return False
 
+
 # ---------------- REST: admin-ish ----------------
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
     clear_room(room)
-    await sio.emit("clear", {"room": room, "message": "Room history cleared."}, room=room)
+    await sio.emit(
+        "clear", {"room": room, "message": "Room history cleared."}, room=room
+    )
     return JSONResponse({"status": "ok", "message": f"Room {room} cleared."})
+
 
 @app.delete("/destroy/{room}")
 async def destroy_room(room: str):
@@ -190,7 +209,11 @@ async def destroy_room(room: str):
     DESTROYED_ROOMS.add(room)
     if room in ROOM_USERS:
         del ROOM_USERS[room]
-    await sio.emit("clear", {"room": room, "message": "Room destroyed. All messages cleared."}, room=room)
+    await sio.emit(
+        "clear",
+        {"room": room, "message": "Room destroyed. All messages cleared."},
+        room=room,
+    )
     await sio.emit("room_destroyed", {"room": room}, room=room)
 
     namespace = "/"
@@ -199,6 +222,7 @@ async def destroy_room(room: str):
         for sid in sids:
             await sio.leave_room(sid, room, namespace=namespace)
     return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
+
 
 # ---------------- Socket.IO Events ----------------
 @sio.event
@@ -235,19 +259,32 @@ async def join(sid, data):
         if filename:
             await sio.emit(
                 "file",
-                {"sender": sender_, "filename": filename, "mimetype": mimetype, "data": filedata, "ts": ts},
+                {
+                    "sender": sender_,
+                    "filename": filename,
+                    "mimetype": mimetype,
+                    "data": filedata,
+                    "ts": ts,
+                },
                 to=sid,
             )
         else:
-            await sio.emit("message", {"sender": sender_, "text": text, "ts": ts}, to=sid)
+            await sio.emit(
+                "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
+            )
 
     if not old_sid:
         await sio.emit(
             "message",
-            {"sender": "System", "text": f"{username} joined!", "ts": datetime.now(timezone.utc).isoformat()},
+            {
+                "sender": "System",
+                "text": f"{username} joined!",
+                "ts": datetime.now(timezone.utc).isoformat(),
+            },
             room=room,
         )
     return {"success": True}
+
 
 @sio.event
 async def status(sid, data):
@@ -266,6 +303,7 @@ async def status(sid, data):
     is_active = bool((data or {}).get("active"))
     USER_STATUS[sid] = {"user": user, "active": is_active}
     print(f"📌 Status update: {user} is now {'ACTIVE' if is_active else 'INACTIVE'}")
+
 
 @sio.event
 async def message(sid, data):
@@ -290,12 +328,16 @@ async def message(sid, data):
 
     save_message(room, sender, text=text)
 
-    await sio.emit("message", {"sender": sender, "text": text, "ts": now.isoformat()}, room=room)
+    await sio.emit(
+        "message", {"sender": sender, "text": text, "ts": now.isoformat()}, room=room
+    )
     print(f"🟢 {room} | {sender}: {text}")
 
     payload = {
-        "title": f"New message in {room}",
-        "body": f"{sender}: {text}",
+        "title": "Realtime Chat",
+        "sender": sender,
+        "text": text,
+        "room": room,
         "url": f"/?room={room}",
         "timestamp": now.isoformat(),
     }
@@ -338,6 +380,7 @@ async def message(sid, data):
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
 
+
 @sio.event
 async def file(sid, data):
     room = data.get("room")
@@ -362,6 +405,7 @@ async def file(sid, data):
         room=room,
     )
 
+
 @sio.event
 async def leave(sid, data):
     room = data.get("room")
@@ -375,9 +419,14 @@ async def leave(sid, data):
     await sio.emit("left_room", {"room": room}, to=sid)
     await sio.emit(
         "message",
-        {"sender": "System", "text": f"{username} left!", "ts": datetime.now(timezone.utc).isoformat()},
+        {
+            "sender": "System",
+            "text": f"{username} left!",
+            "ts": datetime.now(timezone.utc).isoformat(),
+        },
         room=room,
     )
+
 
 @sio.event
 async def disconnect(sid):
@@ -393,9 +442,14 @@ async def disconnect(sid):
                 await broadcast_users(room)
                 await sio.emit(
                     "message",
-                    {"sender": "System", "text": f"{username} disconnected.", "ts": datetime.now(timezone.utc).isoformat()},
+                    {
+                        "sender": "System",
+                        "text": f"{username} disconnected.",
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                    },
                     room=room,
                 )
+
 
 # ---------------- Background tasks ----------------
 @app.on_event("startup")
@@ -407,7 +461,10 @@ async def startup_tasks():
         while True:
             deleted = cleanup_old_messages()
             if deleted > 0:
-                await sio.emit("cleanup", {"message": f"{deleted} old messages (48h+) were removed."})
+                await sio.emit(
+                    "cleanup",
+                    {"message": f"{deleted} old messages (48h+) were removed."},
+                )
             await asyncio.sleep(3600)
 
     async def ping_self():
@@ -424,6 +481,7 @@ async def startup_tasks():
     asyncio.create_task(loop_cleanup())
     asyncio.create_task(ping_self())
 
+
 # ---------------- Subscribe / Push test ----------------
 @app.post("/api/subscribe")
 async def subscribe(request: Request):
@@ -431,7 +489,9 @@ async def subscribe(request: Request):
     subscription = body.get("subscription")
     sender = body.get("sender")
     if not sender or not subscription:
-        return JSONResponse({"error": "sender + subscription required"}, status_code=400)
+        return JSONResponse(
+            {"error": "sender + subscription required"}, status_code=400
+        )
 
     subs = subscriptions.setdefault(sender, [])
     endpoint = normalize_endpoint(subscription.get("endpoint"))
@@ -442,10 +502,15 @@ async def subscribe(request: Request):
     print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}", "vapidPublicKey": VAPID_PUBLIC_KEY}
 
+
 @app.post("/send-push-notification")
 async def send_push_notification():
     now = datetime.now(timezone.utc)
-    payload = {"title": "Test Message", "body": "This is a test notification.", "timestamp": now.isoformat()}
+    payload = {
+        "title": "Test Message",
+        "body": "This is a test notification.",
+        "timestamp": now.isoformat(),
+    }
     push_id = make_push_id("TEST", "system", payload["body"], payload["timestamp"])
     for user, subs in list(subscriptions.items()):
         for sub in list(subs):
@@ -465,16 +530,20 @@ async def send_push_notification():
                 print(f"❌ Push failed for {user}: {e}")
     return {"status": "ok"}
 
+
 # ---------------- Static / PWA assets ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
+
 
 @app.get("/manifest.json")
 async def manifest():
     return FileResponse(os.path.join(BASE_DIR, "manifest.json"))
 
+
 @app.get("/sw.js")
 async def service_worker():
     return FileResponse(os.path.join(BASE_DIR, "sw.js"))
+
 
 @app.get("/sitemap.xml")
 def sitemap():
@@ -488,9 +557,11 @@ def sitemap():
     xml += "</urlset>"
     return Response(content=xml, media_type="application/xml")
 
+
 @app.get("/robots.txt")
 def robots():
     return Response("User-agent: *\nAllow: /\n", media_type="text/plain")
+
 
 # Serve the static SPA root
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
@@ -498,6 +569,7 @@ app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
 # ---------------- Run ----------------
 if __name__ == "__main__":
     import uvicorn
+
     local_ip = socket.gethostbyname(socket.gethostname())
     print("🚀 Server running at:")
     print("   ➤ Local:   http://127.0.0.1:8000")
