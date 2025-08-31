@@ -81,7 +81,6 @@ self.addEventListener("push", event => {
     badge: "/icons/icon-192.png",
     data: {
       url: data.url || "/",
-      timestamp: data.timestamp
     }
   };
 
