@@ -1,6 +1,6 @@
 # ---------------- server.py ----------------
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 import socketio
@@ -10,10 +10,11 @@ import asyncio
 from fastapi.staticfiles import StaticFiles
 import aiohttp
 import json
-from fastapi.responses import JSONResponse
 from pywebpush import webpush, WebPushException
 from dotenv import load_dotenv
-
+from urllib.parse import urlparse
+import hashlib
+from collections import deque
 
 # ---------------- Globals ----------------
 DB_PATH = "chat.db"
@@ -22,11 +23,15 @@ ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
 subscriptions: dict[str, list[dict]] = {}  # username -> [subscription objects]
 
+# Push de-duplication: per-endpoint recent payload IDs sent
+PUSH_RECENT: dict[str, deque] = {}  # endpoint -> deque of (push_id, ts)
+PUSH_RECENT_MAX = 100
+PUSH_RECENT_WINDOW = timedelta(seconds=30)
+
 # Load environment variables
 load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
-
 
 # ---------------- Database ----------------
 def init_db():
@@ -134,6 +139,9 @@ def clear_room(room):
 
 
 # ---------------- FastAPI + Socket.IO ----------------
+app = FastAPI()
+
+# Single, properly-configured Socket.IO server
 sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
@@ -142,22 +150,10 @@ sio = socketio.AsyncServer(
     ping_timeout=5,
 )
 
-app = FastAPI()
-sio = socketio.AsyncServer(async_mode="asgi")
-sio_app = socketio.ASGIApp(
-    sio,
-    socketio_path="socket.io",
-)
-app.mount("/socket.io", sio_app)
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
+app.mount("/socket.io", sio_app)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# app = FastAPI()
-# sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
-# app.mount("/socket.io", sio_app)
-
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 # ---------------- Helper ----------------
 async def broadcast_users(room):
@@ -165,6 +161,44 @@ async def broadcast_users(room):
         {"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})
     ]
     await sio.emit("users_update", {"room": room, "users": users}, room=room)
+
+
+def normalize_endpoint(endpoint: str) -> str | None:
+    """Normalize push endpoint so the same device matches reliably."""
+    if not endpoint:
+        return None
+    try:
+        parsed = urlparse(endpoint)
+        # Keep only scheme + netloc + path (drop query/fragment/etc.)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    except Exception:
+        return endpoint.split("?")[0] if endpoint else endpoint
+
+
+def make_push_id(room: str, sender: str, text: str, timestamp_iso: str) -> str:
+    """Stable ID for this push content (same message → same id)."""
+    basis = f"{room}|{sender}|{text}|{timestamp_iso}"
+    return hashlib.sha256(basis.encode("utf-8")).hexdigest()
+
+
+def should_send_push(endpoint: str, push_id: str, now: datetime) -> bool:
+    """
+    Return True if we should send (not seen recently).
+    Stores id and prunes old entries.
+    """
+    dq = PUSH_RECENT.setdefault(endpoint, deque())
+    # Already seen?
+    for pid, t in dq:
+        if pid == push_id and (now - t) <= PUSH_RECENT_WINDOW:
+            return False
+    # Append and prune
+    dq.append((push_id, now))
+    while len(dq) > PUSH_RECENT_MAX:
+        dq.popleft()
+    # Also prune old entries by time
+    while dq and (now - dq[0][1]) > PUSH_RECENT_WINDOW:
+        dq.popleft()
+    return True
 
 
 # ---------------- Routes ----------------
@@ -212,7 +246,7 @@ async def join(sid, data):
 
     old_sid = ROOM_USERS[room].get(username)
 
-    # 👉 Already joined with same sid → do nothing
+    # Already joined with same sid → do nothing
     if old_sid == sid:
         return {"success": True, "message": "Already in room"}
 
@@ -263,33 +297,18 @@ async def join(sid, data):
     return {"success": True}
 
 
-from urllib.parse import urlparse
-
-
-def normalize_endpoint(endpoint: str) -> str:
-    """Normalize push endpoint so the same device matches reliably."""
-    if not endpoint:
-        return None
-    try:
-        parsed = urlparse(endpoint)
-        # Keep only scheme + netloc + path (drop query/fragment/etc.)
-        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-    except Exception:
-        return endpoint.split("?")[0] if endpoint else endpoint
-
-
 @sio.event
 async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 sender’s subscription object
+    sender_sub = data.get("subscription")  # sender’s subscription object
     now = datetime.now(timezone.utc)
 
     if not text:
         return
 
-    # 🛑 Duplicate filter
+    # Duplicate chat message filter (spam key)
     key = (room, sender)
     last = LAST_MESSAGE.get(key)
     if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
@@ -299,10 +318,10 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
-    # ✅ Save to DB
+    # Save to DB
     save_message(room, sender, text=text)
 
-    # ✅ Emit to room (real-time via socket.io)
+    # Emit to room (real-time via socket.io)
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
@@ -310,15 +329,16 @@ async def message(sid, data):
     )
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
-    # ✅ Build push payload
+    # Build push payload + ID
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
         "url": f"/?room={room}",
         "timestamp": now.isoformat(),
     }
+    push_id = make_push_id(room, sender, text, payload["timestamp"])
 
-    # ✅ Extract and normalize sender endpoint
+    # Extract and normalize sender endpoint
     sender_endpoint = None
     if sender_sub and isinstance(sender_sub, dict):
         sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))
@@ -326,24 +346,31 @@ async def message(sid, data):
     else:
         print("⚠️ No subscription provided with message")
 
-    # ✅ Iterate over all users’ subscriptions (global dict)
-    # ✅ Iterate over all users’ subscriptions
-    for user, subs in subscriptions.copy().items():
-        for sub in subs:
+    # Iterate over all users’ subscriptions
+    for user, subs in list(subscriptions.items()):
+        for sub in list(subs):
             if not sub:
                 continue
 
             target_endpoint = normalize_endpoint(sub.get("endpoint"))
+            if not target_endpoint:
+                continue
+
             print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
-            # 🚫 Skip exact sender device (same endpoint)
+            # Skip exact sender device (same endpoint)
             if sender_endpoint and target_endpoint == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
 
-            # 🚫 Extra fallback: skip ALL of sender’s subs if no endpoint provided
+            # Extra fallback: skip ALL of sender’s subs if no endpoint provided
             if not sender_endpoint and user == sender:
                 print(f"⏭️ Skipping all pushes for sender {sender} (no endpoint info)")
+                continue
+
+            # De-dup guard: prevent duplicate pushes of the same payload to same endpoint
+            if not should_send_push(target_endpoint, push_id, now):
+                print(f"⏭️ Duplicate push suppressed for endpoint {target_endpoint}")
                 continue
 
             try:
@@ -471,7 +498,7 @@ async def subscribe(request: Request):
 
     subs = subscriptions.setdefault(sender, [])
 
-    # ✅ Normalize endpoint for reliable deduplication
+    # Normalize endpoint for reliable deduplication
     endpoint = normalize_endpoint(subscription.get("endpoint"))
     if not endpoint:
         return JSONResponse({"error": "invalid endpoint"}, status_code=400)
@@ -482,24 +509,35 @@ async def subscribe(request: Request):
     print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}"}
 
+
 # ----------------------
 # Test push endpoint
 # ----------------------
 @app.post("/send-push-notification")
 async def send_push_notification():
-    payload = {"title": "Test Message", "body": "This is a test notification."}
-    for sub in subscriptions.copy():
-        try:
-            print(f"📤 Sending push to {sub['endpoint'][:50]}...")
-            webpush(
-                subscription_info=sub,
-                data=json.dumps(payload),
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": "mailto:example@domain.com"},
-            )
-        except WebPushException as e:
-            print(f"❌ Push failed: {e}")
+    now = datetime.now(timezone.utc)
+    payload = {"title": "Test Message", "body": "This is a test notification.", "timestamp": now.isoformat()}
+    push_id = make_push_id("TEST", "system", payload["body"], payload["timestamp"])
+    for user, subs in list(subscriptions.items()):
+        for sub in list(subs):
+            try:
+                endpoint = normalize_endpoint(sub.get("endpoint"))
+                if not endpoint:
+                    continue
+                if not should_send_push(endpoint, push_id, now):
+                    print(f"⏭️ Duplicate test push suppressed for {endpoint}")
+                    continue
+                print(f"📤 Sending push to {user} ({endpoint[:50]}...)")
+                webpush(
+                    subscription_info=sub,
+                    data=json.dumps(payload),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": "mailto:example@domain.com"},
+                )
+            except WebPushException as e:
+                print(f"❌ Push failed for {user}: {e}")
     return {"status": "Push notification sent"}
+
 
 # ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
