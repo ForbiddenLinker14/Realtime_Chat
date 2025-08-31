@@ -51,44 +51,26 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
-// ✅ Handle push events with room info
-self.addEventListener("push", event => {
-  const data = event.data ? event.data.json() : {};
-  console.log("📩 Push event received:", data);
+self.addEventListener("push", function(event) {
+  event.waitUntil((async () => {
+    const allClients = await clients.matchAll({ includeUncontrolled: true });
+    let isClientFocused = allClients.some(client => client.focused);
 
-  // Always use custom title
-  const title = data.room ? `Room: ${data.room}` : "Realtime Chat";
-
-  const options = {
-    body: data.body || "New message",
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
-    data: {
-      url: data.url || `/chat/${data.room || ""}`, // Open room page if available
-      room: data.room || null
+    if (!isClientFocused) {
+      // Show notification only if no client is focused
+      self.registration.showNotification("Title", {
+        body: "Message text",
+        icon: "/icon.png"
+      });
+    } else {
+      // Optionally send message to client instead of showing notification
+      allClients.forEach(client => {
+        client.postMessage({
+          type: "PUSH_MESSAGE",
+          title: "Title",
+          body: "Message text"
+        });
+      });
     }
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
-});
-
-// ✅ Handle click on notification
-self.addEventListener("notificationclick", event => {
-  event.notification.close();
-
-  event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
-      if (clientsArr.length > 0) {
-        const client = clientsArr[0];
-        client.focus();
-        if (event.notification.data?.url) {
-          client.navigate(event.notification.data.url);
-        }
-      } else {
-        clients.openWindow(event.notification.data?.url || "/");
-      }
-    })
-  );
+  })());
 });
