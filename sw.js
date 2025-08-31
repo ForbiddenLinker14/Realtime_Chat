@@ -77,24 +77,28 @@ self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
 
-  let relativeTime = "Now"; // default
+  // Format relative time
+  let relativeTime = "Now";
   if (data.timestamp) {
     const diffMs = Date.now() - new Date(data.timestamp).getTime();
     const diffSec = Math.floor(diffMs / 1000);
 
     if (diffSec < 60) {
       relativeTime = "Now";
-    } else if (diffSec < 3600) { // less than 1 hour
+    } else if (diffSec < 3600) {
       relativeTime = `${Math.floor(diffSec / 60)}m`;
-    } else if (diffSec < 86400) { // less than 1 day
+    } else if (diffSec < 86400) {
       relativeTime = `${Math.floor(diffSec / 3600)}h`;
     } else {
       relativeTime = `${Math.floor(diffSec / 86400)}d`;
     }
   }
 
+  // Always use custom title
+  const title = "Realtime Chat";
+
   const options = {
-    body: `${data.body || "No body"}\n${relativeTime}`,
+    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}\n${relativeTime}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
@@ -104,7 +108,7 @@ self.addEventListener("push", event => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "New Message", options)
+    self.registration.showNotification(title, options)
   );
 });
 
@@ -114,19 +118,18 @@ self.addEventListener("notificationclick", event => {
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
       if (clientsArr.length > 0) {
-        // focus first existing tab
         const client = clientsArr[0];
         client.focus();
         if (event.notification.data?.url) {
           client.navigate(event.notification.data.url);
         }
       } else {
-        // open new tab
         clients.openWindow(event.notification.data?.url || "/");
       }
     })
   );
 });
+
 
 
 
