@@ -267,13 +267,13 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 subscription object from client
+    sender_sub = data.get("subscription")  # 👈 sender’s subscription
     now = datetime.now(timezone.utc)
 
     if not text:
         return
 
-    # 🛑 Avoid duplicates from same sender within 1.5s
+    # 🛑 Duplicate filter
     key = (room, sender)
     last = LAST_MESSAGE.get(key)
     if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
@@ -283,18 +283,18 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
+    # ✅ Save to DB
     save_message(room, sender, text=text)
 
-    # ✅ Emit to socket members
+    # ✅ Emit to room
     await sio.emit(
         "message",
         {"sender": sender, "text": text, "ts": now.isoformat()},
         room=room,
     )
-
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
-    # ✅ Notification payload
+    # ✅ Build push payload
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
@@ -302,20 +302,22 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
-    # 👇 Extract sender endpoint
+    # ✅ Extract sender endpoint
     sender_endpoint = None
     if sender_sub and isinstance(sender_sub, dict):
         sender_endpoint = sender_sub.get("endpoint")
+        print(f"📌 Sender endpoint: {sender_endpoint}")
 
+    # ✅ Loop over subscriptions
     for user, subs in subscriptions.copy().items():
         for sub in subs:
-            # ❌ Skip only the sender's device by endpoint
+            # 🚫 Skip if endpoint matches sender’s subscription
             if sender_endpoint and sub.get("endpoint") == sender_endpoint:
-                print(f"⏭️ Skipping push to sender device ({sender_endpoint[:50]}...)")
+                print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
 
             try:
-                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]}...)")
+                print(f"📤 Sending push to {user} ({sub['endpoint'][:50]})...")
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
