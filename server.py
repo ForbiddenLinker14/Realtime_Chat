@@ -299,6 +299,11 @@ async def message(sid, data):
     )
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
+    # ✅ Debug: log incoming subscription
+    print(
+        f"📥 Incoming message: sender={sender}, room={room}, subscription={bool(sender_sub)}"
+    )
+
     # ✅ Build push payload
     payload = {
         "title": f"New message in {room}",
@@ -312,6 +317,8 @@ async def message(sid, data):
     if sender_sub and isinstance(sender_sub, dict):
         sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))
         print(f"📌 Sender endpoint: {sender_endpoint}")
+    else:
+        print("⚠️ No subscription provided with message")
 
     # ✅ Loop over subscriptions
     for user, subs in subscriptions.copy().items():
@@ -334,7 +341,6 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
-
 
 @sio.event
 async def file(sid, data):

@@ -798,28 +798,43 @@
       sending = true;
       document.getElementById("send").disabled = true;
 
-      // ✅ Include this device's subscription so server can skip it
-      navigator.serviceWorker.ready.then(registration => {
-        registration.pushManager.getSubscription().then(sub => {
-          console.log("📌 Current subscription:", sub); // 👈 Debug log
+      // ✅ Attach subscription info so server can skip current device
+      navigator.serviceWorker.ready
+        .then(registration => registration.pushManager.getSubscription())
+        .then(sub => {
+          console.log("📌 Current subscription:", sub ? sub.endpoint : "none");
 
           socket.emit("message", {
             room: currentRoom,
             sender: currentName,
             text,
-            subscription: sub ? sub.toJSON() : null   // 👈 attach subscription
+            subscription: sub ? sub.toJSON() : null   // 👈 include full subscription object
+          }, () => {
+            // ✅ Ack callback from server
+            sending = false;
+            document.getElementById("send").disabled = false;
+          });
+        })
+        .catch(err => {
+          console.error("❌ Failed to get subscription:", err);
+
+          // Even if subscription lookup fails, still send message
+          socket.emit("message", {
+            room: currentRoom,
+            sender: currentName,
+            text,
+            subscription: null
           }, () => {
             sending = false;
             document.getElementById("send").disabled = false;
           });
         });
-      });
 
-      // Fallback safety reset
+      // ✅ Fallback safety reset in case callback never arrives
       setTimeout(() => {
         sending = false;
         document.getElementById("send").disabled = false;
-      }, 500);
+      }, 1000);
 
       inputEl.value = "";
     }
