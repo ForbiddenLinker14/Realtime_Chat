@@ -262,9 +262,19 @@ async def join(sid, data):
     return {"success": True}
 
 
+from urllib.parse import urlparse
+
+
 def normalize_endpoint(endpoint: str) -> str:
-    """Remove query params or trailing differences so endpoints compare reliably."""
-    return endpoint.split("?")[0] if endpoint else endpoint
+    """Normalize push endpoint so the same device matches reliably."""
+    if not endpoint:
+        return None
+    try:
+        parsed = urlparse(endpoint)
+        # Keep only scheme + netloc + path (drop query/fragment/etc.)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    except Exception:
+        return endpoint.split("?")[0] if endpoint else endpoint
 
 
 @sio.event
@@ -325,6 +335,9 @@ async def message(sid, data):
         for sub in subs:
             # Normalize target endpoint too
             target_endpoint = normalize_endpoint(sub.get("endpoint"))
+
+            # 🔍 Debug comparison
+            print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
             # 🚫 Skip only the exact sender device
             if sender_endpoint and target_endpoint == sender_endpoint:
