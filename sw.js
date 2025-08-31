@@ -193,7 +193,6 @@ self.addEventListener("notificationclick", event => {
   event.notification.close();
 
   event.waitUntil((async () => {
-    // helper to focus or open window
     async function focusOrOpen(url) {
       const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
       if (clientList.length > 0) {
@@ -206,12 +205,12 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "reply") {
-      const replyText = event.reply; // ✅ only Android inline reply
+      const replyText = event.reply; // ✅ works only on Android
       const client = await focusOrOpen(targetUrl);
 
       if (client) {
         if (replyText) {
-          // inline reply → send to page immediately
+          // ✅ Send inline reply text (Android only)
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -220,7 +219,7 @@ self.addEventListener("notificationclick", event => {
             timestamp: new Date().toISOString()
           });
         } else {
-          // fallback → trigger reply UI
+          // ✅ Desktop fallback → prefill UI
           client.postMessage({
             type: "NOTIF_REPLY",
             room,
@@ -234,13 +233,11 @@ self.addEventListener("notificationclick", event => {
     }
 
     if (action === "mark-read") {
-      if (room) {
-        const lastRead = await getLastReadMap();
-        const ts = payload.timestamp || new Date().toISOString();
-        if (!lastRead[room] || ts > lastRead[room]) {
-          lastRead[room] = ts;
-          await setLastReadMap(lastRead);
-        }
+      const lastRead = await getLastReadMap();
+      const ts = payload.timestamp || new Date().toISOString();
+      if (room && (!lastRead[room] || ts > lastRead[room])) {
+        lastRead[room] = ts;
+        await setLastReadMap(lastRead);
       }
       await focusOrOpen(targetUrl);
       return;
@@ -254,14 +251,17 @@ self.addEventListener("notificationclick", event => {
         await setMuteSet(mute);
       }
       const clientList = await clients.matchAll({ type: "window", includeUncontrolled: true });
-      clientList.forEach(c => c.postMessage({ type: "MUTE_CHANGED", room, muted: action === "mute" }));
+      clientList.forEach(c =>
+        c.postMessage({ type: "MUTE_CHANGED", room, muted: action === "mute" })
+      );
       return;
     }
 
-    // Default (click body): open/focus the target
+    // Default click → open chat
     await focusOrOpen(targetUrl);
   })());
 });
+
 
 
 
