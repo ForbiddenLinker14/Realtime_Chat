@@ -644,7 +644,7 @@
       return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
     }
 
-    const VAPID_PUBLIC_KEY = 'BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw';
+    const VAPID_PUBLIC_KEY = "BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw";
     const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
 
     async function subscribeUser(sender) {
@@ -657,12 +657,12 @@
             userVisibleOnly: true,
             applicationServerKey
           });
-          console.log("📌 New subscription created:", JSON.stringify(subscription));
+          console.log("📌 New subscription created:", subscription.toJSON());
         } else {
-          console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
+          console.log("🔄 Using existing subscription:", subscription.toJSON());
         }
 
-        // ✅ Always save subscription locally (so sendMessage can attach it)
+        // ✅ Always save locally
         localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
 
         // Send subscription to backend
@@ -681,18 +681,22 @@
     }
 
     async function requestNotificationPermission() {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        console.log("✅ Notification permission granted.");
-        const registration = await navigator.serviceWorker.register("/sw.js");
-        console.log("✅ Service Worker registered.");
-        await subscribeUser();
-      } else {
-        console.log("❌ Notification permission denied.");
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          console.log("✅ Notifications allowed.");
+          const registration = await navigator.serviceWorker.register("/sw.js");
+          console.log("✅ Service Worker registered.");
+          await subscribeUser();
+        } else {
+          console.log("❌ Notifications denied.");
+        }
+      } catch (err) {
+        console.error("❌ Notification setup failed:", err);
       }
     }
 
-    // Chat app state
+    // ===== Chat State =====
     let socket, currentRoom = "", currentName = "";
     let joinedRooms = new Set();
     let lastPersistedTs = null;
@@ -715,11 +719,12 @@
       }
     }
 
+    // ===== Join Room =====
     function joinRoom() {
       currentName = document.getElementById("name").value.trim();
       currentRoom = document.getElementById("room").value.trim();
-      if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
-      if (joinedRooms.has(currentRoom)) { alert(`You are already in room "${currentRoom}"!`); return; }
+      if (!currentName || !currentRoom) return alert("Enter name and room first!");
+      if (joinedRooms.has(currentRoom)) return alert(`Already in room "${currentRoom}"!`);
 
       Storage.set("chat_name", currentName);
       Storage.set("chat_room", currentRoom);
@@ -748,57 +753,32 @@
         });
       }
 
-      socket.on("users_update", data => {
-        if (!currentRoom || data.room !== currentRoom) return;
-        const list = document.getElementById("user-list");
-        const seen = new Set();
-        const existing = new Map();
-        list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
-        data.users.forEach(u => {
-          if (seen.has(u.name)) return;
-          seen.add(u.name);
-          const color = u.status === "online" ? "#25d366" : "red";
-          const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
-          let li = existing.get(u.name);
-          if (li) {
-            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-            existing.delete(u.name);
-          } else {
-            li = document.createElement("li");
-            li.setAttribute("data-name", u.name);
-            li.className = "fade-in";
-            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-            list.appendChild(li);
-          }
-        });
-        existing.forEach(li => {
-          li.classList.add("fade-out");
-          setTimeout(() => li.remove(), 300);
-        });
-      });
+      // ===== Socket Listeners =====
+      socket.on("connect", () => safeJoinWithRetry());
+      socket.on("users_update", updateUserList);
+      socket.on("left_room", data => { if (data.room === currentRoom) document.getElementById("user-list").innerHTML = ""; });
+      socket.on("room_destroyed", handleRoomDestroyed);
+      socket.on("clear", handleRoomCleared);
+      socket.on("message", addMessage);
+      socket.on("file", addFileMessage);
 
+      // ===== UI Bindings =====
       document.getElementById("chat-container").style.display = "flex";
       document.getElementById("input-area").style.display = "flex";
       document.getElementById("intro").style.display = "none";
       document.getElementById("messages").style.display = "block";
 
-      socket.on("left_room", data => { if (data.room === currentRoom) document.getElementById("user-list").innerHTML = ""; });
-      socket.on("room_destroyed", handleRoomDestroyed);
-      socket.on("clear", handleRoomCleared);
-      socket.on("connect", () => safeJoinWithRetry());
-      socket.on("message", addMessage);
-      socket.on("file", addFileMessage);
-
       document.getElementById("send").onclick = sendMessage;
-      document.getElementById("input").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+      document.getElementById("input").onkeydown = e => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+      };
       document.getElementById("attach").onclick = e => { e.preventDefault(); document.getElementById("fileInput").click(); };
       document.getElementById("fileInput").onchange = handleFileUpload;
     }
 
-    // ✅ FINAL sendMessage (always include saved subscription)
+    // ✅ Send message (always attach subscription)
     async function sendMessage() {
       if (sending) return;
-
       const inputEl = document.getElementById("input");
       const text = inputEl.value.trim();
       if (!text || !currentRoom) return;
@@ -807,54 +787,32 @@
       document.getElementById("send").disabled = true;
 
       try {
-        // 🔑 Ensure subscription exists and is stored in localStorage
         await subscribeUser(currentName);
-
-        // ✅ Pull from localStorage instead of pushManager directly
         const savedSub = localStorage.getItem("pushSub");
         const sub = savedSub ? JSON.parse(savedSub) : null;
 
-        console.log("🔑 Sub being sent:", sub);
-
-        socket.emit(
-          "message",
-          {
-            room: currentRoom,
-            sender: currentName,
-            text,
-            subscription: sub, // 👈 always attached from localStorage
-          },
-          () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-          }
-        );
+        socket.emit("message", { room: currentRoom, sender: currentName, text, subscription: sub }, () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        });
       } catch (err) {
-        console.error("❌ Subscription error:", err);
-
-        socket.emit(
-          "message",
-          {
-            room: currentRoom,
-            sender: currentName,
-            text,
-            subscription: null,
-          },
-          () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-          }
-        );
+        console.error("❌ Send failed:", err);
+        socket.emit("message", { room: currentRoom, sender: currentName, text, subscription: null }, () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        });
       }
 
       inputEl.value = "";
     }
 
+    // ===== UI Message Handling =====
     function addMessage(data) {
       const messages = document.getElementById("messages");
       const last = messages.lastElementChild;
       if (data.sender === "System" && last && last.textContent === data.text) return;
       if (!currentRoom && data.sender === "System" && /joined/i.test(data.text) && data.text.includes(currentName)) return;
+
       const div = document.createElement("div");
       if (data.sender === "System") {
         div.className = "msg system";
@@ -867,7 +825,7 @@
         div.innerHTML = `<strong>${data.sender}</strong><br>${data.text}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
       }
       messages.appendChild(div);
-      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
     }
 
     function addFileMessage(data) {
@@ -876,14 +834,13 @@
       const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
       div.className = "msg " + (isMe ? "me" : "other");
       div.dataset.ts = data.ts;
+
       if (data.mimetype && data.mimetype.startsWith("image/")) {
         div.innerHTML = `
         <div class="username"><strong>${data.sender}</strong></div>
         <div class="image-wrapper">
           <a href="${data.data}" download="${data.filename}" class="download-icon" title="Download">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24">
-              <path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/>
-            </svg>
+            ⬇
           </a>
           <img src="${data.data}" alt="${data.filename}"> 
         </div>
@@ -894,9 +851,10 @@
         <a href="${data.data}" download="${data.filename}" class="download-link">📎 ${data.filename}</a><br>
         <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
       }
+
       const messages = document.getElementById("messages");
       messages.appendChild(div);
-      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
     }
 
     function handleFileUpload() {
@@ -909,21 +867,12 @@
       reader.readAsDataURL(file);
     }
 
+    // ===== Room Events =====
     function handleRoomDestroyed(data) {
       if (currentRoom === data.room) {
-        document.getElementById("input").disabled = true;
-        document.getElementById("send").disabled = true;
-        document.getElementById("attach").disabled = true;
-        addMessage({ sender: "System", text: "Room destroyed. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
-        lastPersistedTs = null;
-        joinedRooms.delete(data.room);
-        currentRoom = "";
-        Storage.remove("chat_name"); Storage.remove("chat_room");
-        document.getElementById("user-list").innerHTML = "";
-        document.getElementById("chat-container").style.display = "none";
-        document.getElementById("input-area").style.display = "none";
-        document.getElementById("intro").style.display = "block";
-        document.getElementById("messages").style.display = "none";
+        disableChat();
+        addMessage({ sender: "System", text: "Room destroyed.", ts: new Date().toISOString() });
+        resetRoomState();
       }
     }
 
@@ -936,23 +885,47 @@
     }
 
     async function clearRoom() {
-      if (!currentRoom) { alert("Join a room first!"); return; }
+      if (!currentRoom) return alert("Join a room first!");
       try {
-        const res = await fetch(`/clear/${encodeURIComponent(currentRoom)}`, { method: "DELETE", cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to clear room: ${res.status} ${await res.text()}`);
-      } catch (err) { console.error(err); alert(err.message); }
+        const res = await fetch(`/clear/${encodeURIComponent(currentRoom)}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`Failed to clear room: ${res.status}`);
+      } catch (err) {
+        console.error(err);
+        alert(err.message);
+      }
     }
 
     async function destroyRoom() {
-      if (!currentRoom) { alert("Join a room first!"); return; }
-      if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
+      if (!currentRoom) return alert("Join a room first!");
+      if (!confirm(`Destroy room "${currentRoom}"?`)) return;
       await fetch(`/destroy/${currentRoom}`, { method: "DELETE" });
-      document.getElementById("messages").innerHTML = "";
-      addMessage({ sender: "System", text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
+      disableChat();
+      addMessage({ sender: "System", text: "Room destroyed. All messages cleared.", ts: new Date().toISOString() });
+      resetRoomState();
+    }
+
+    function leaveRoom() {
+      if (!currentRoom) return alert("Not in a room!");
+      const leftRoom = currentRoom;
+      socket.emit("leave", { room: currentRoom, sender: currentName });
+      disableChat();
+      addMessage({ sender: "System", text: `YOU LEFT ROOM ${leftRoom}`, ts: new Date().toISOString() });
+      resetRoomState();
+    }
+
+    // ===== Helpers =====
+    function disableChat() {
+      document.getElementById("input").disabled = true;
+      document.getElementById("send").disabled = true;
+      document.getElementById("attach").disabled = true;
+    }
+
+    function resetRoomState() {
       lastPersistedTs = null;
-      Storage.remove("chat_name"); Storage.remove("chat_room");
       joinedRooms.delete(currentRoom);
       currentRoom = "";
+      Storage.remove("chat_name");
+      Storage.remove("chat_room");
       document.getElementById("user-list").innerHTML = "";
       document.getElementById("chat-container").style.display = "none";
       document.getElementById("input-area").style.display = "none";
@@ -960,24 +933,38 @@
       document.getElementById("messages").style.display = "none";
     }
 
-    function leaveRoom() {
-      if (!currentRoom) { alert("You are not in a room!"); return; }
-      const leftRoom = currentRoom;
-      socket.emit("leave", { room: currentRoom, sender: currentName });
-      document.getElementById("input").disabled = true;
-      document.getElementById("send").disabled = true;
-      document.getElementById("attach").disabled = true;
-      addMessage({ sender: "System", text: `YOU LEFT FROM ROOM ${leftRoom}`, ts: new Date().toISOString() });
-      lastPersistedTs = null;
-      joinedRooms.delete(currentRoom);
-      currentRoom = "";
-      Storage.remove("chat_name"); Storage.remove("chat_room");
-      document.getElementById("user-list").innerHTML = "";
-      document.getElementById("chat-container").style.display = "block";
-      document.getElementById("input-area").style.display = "none";
-      document.getElementById("messages").style.display = "block";
+    function updateUserList(data) {
+      if (!currentRoom || data.room !== currentRoom) return;
+      const list = document.getElementById("user-list");
+      const seen = new Set();
+      const existing = new Map();
+      list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
+
+      data.users.forEach(u => {
+        if (seen.has(u.name)) return;
+        seen.add(u.name);
+        const color = u.status === "online" ? "#25d366" : "red";
+        const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
+        let li = existing.get(u.name);
+        if (li) {
+          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+          existing.delete(u.name);
+        } else {
+          li = document.createElement("li");
+          li.setAttribute("data-name", u.name);
+          li.className = "fade-in";
+          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+          list.appendChild(li);
+        }
+      });
+
+      existing.forEach(li => {
+        li.classList.add("fade-out");
+        setTimeout(() => li.remove(), 300);
+      });
     }
 
+    // ===== Network Handling =====
     window.addEventListener("offline", () => { if (socket && socket.connected) socket.disconnect(); });
     let reconnectTimer;
     window.addEventListener("online", () => {
@@ -990,20 +977,17 @@
       }, 300);
     });
 
-    // Initial setup
+    // ===== Initial Load =====
     window.addEventListener("load", () => {
-      // Hide chat by default
       document.getElementById("input-area").style.display = "none";
       document.getElementById("chat-container").style.display = "none";
       document.getElementById("messages").style.display = "none";
       document.getElementById("intro").style.display = "none";
 
-      // Notifications setup
       if ("Notification" in window && "serviceWorker" in navigator) {
         requestNotificationPermission();
       }
 
-      // Restore saved session
       const savedName = Storage.get("chat_name");
       const savedRoom = Storage.get("chat_room");
       if (savedName && savedRoom) {
@@ -1016,7 +1000,5 @@
     });
   </script>
 
-
 </body>
-
 </html>

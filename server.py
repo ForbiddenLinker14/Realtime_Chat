@@ -1,25 +1,26 @@
 # ---------------- server.py ----------------
+import os
+import json
+import socket
+import asyncio
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
+
+import aiohttp
+import socketio
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-import socketio
-import socket
-import os
-import asyncio
 from fastapi.staticfiles import StaticFiles
-import aiohttp
-import json
-from fastapi.responses import JSONResponse
 from pywebpush import webpush, WebPushException
 from dotenv import load_dotenv
-
+import functools
 
 # ---------------- Globals ----------------
 DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
-ROOM_USERS = {}  # { room: { username: sid } }
-LAST_MESSAGE = {}  # {(room, username): (text, ts)}
+ROOM_USERS: dict[str, dict[str, str]] = {}  # room -> { username: sid }
+LAST_MESSAGE: dict[tuple[str, str], tuple[str, datetime]] = {}  # (room, user) -> (text, ts)
 subscriptions: dict[str, list[dict]] = {}  # username -> [subscription objects]
 
 # Load environment variables
@@ -27,6 +28,8 @@ load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+KEEPALIVE_URL = os.getenv("KEEPALIVE_URL", "https://realtime-chat-1mv3.onrender.com")
 
 # ---------------- Database ----------------
 def init_db():
@@ -44,7 +47,7 @@ def init_db():
             filedata TEXT,
             ts TEXT NOT NULL
         )
-    """
+        """
     )
     conn.commit()
     conn.close()
@@ -75,13 +78,18 @@ def count_messages():
 
 
 def cleanup_old_messages():
+    """
+    Delete messages older than 48 hours using a Python-computed ISO cutoff.
+    (We store ts as ISO strings; keep comparison consistent.)
+    """
+    cutoff_iso = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+    before = count_messages()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    before = count_messages()
-    c.execute("DELETE FROM messages WHERE ts < datetime('now', '-48 hours')")
+    c.execute("DELETE FROM messages WHERE ts < ?", (cutoff_iso,))
     conn.commit()
-    after = count_messages()
     conn.close()
+    after = count_messages()
     return before - after
 
 
@@ -141,39 +149,51 @@ sio = socketio.AsyncServer(
     ping_interval=3,
     ping_timeout=5,
 )
-
 app = FastAPI()
-sio = socketio.AsyncServer(async_mode="asgi")
-sio_app = socketio.ASGIApp(
-    sio,
-    socketio_path="socket.io",
-)
-app.mount("/socket.io", sio_app)
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount("/socket.io", sio_app)
 
-# app = FastAPI()
-# sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
-# app.mount("/socket.io", sio_app)
+# ---------------- Helpers ----------------
+def normalize_endpoint(endpoint: str | None) -> str | None:
+    """Normalize push endpoint so the same device matches reliably."""
+    if not endpoint:
+        return None
+    try:
+        parsed = urlparse(endpoint)
+        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    except Exception:
+        return endpoint.split("?")[0] if endpoint else endpoint
 
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-
-# ---------------- Helper ----------------
-async def broadcast_users(room):
-    users = [
-        {"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})
-    ]
+async def broadcast_users(room: str):
+    users = [{"name": username, "status": "online"} for username in ROOM_USERS.get(room, {})]
     await sio.emit("users_update", {"room": room, "users": users}, room=room)
 
+
+async def send_webpush_async(sub: dict, payload: dict):
+    """
+    Run synchronous webpush in a background thread so we don't block the event loop.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            functools.partial(
+                webpush,
+                subscription_info=sub,
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": "mailto:example@domain.com"},
+            ),
+        )
+    except WebPushException as e:
+        raise e
 
 # ---------------- Routes ----------------
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
     clear_room(room)
-    await sio.emit(
-        "clear", {"room": room, "message": "Room history cleared."}, room=room
-    )
+    await sio.emit("clear", {"room": room, "message": "Room history cleared."}, room=room)
     return JSONResponse({"status": "ok", "message": f"Room {room} cleared."})
 
 
@@ -183,19 +203,15 @@ async def destroy_room(room: str):
     DESTROYED_ROOMS.add(room)
     if room in ROOM_USERS:
         del ROOM_USERS[room]
-    await sio.emit(
-        "clear",
-        {"room": room, "message": "Room destroyed. All messages cleared."},
-        room=room,
-    )
+    await sio.emit("clear", {"room": room, "message": "Room destroyed. All messages cleared."}, room=room)
     await sio.emit("room_destroyed", {"room": room}, room=room)
+
     namespace = "/"
     if namespace in sio.manager.rooms and room in sio.manager.rooms[namespace]:
         sids = list(sio.manager.rooms[namespace][room])
         for sid in sids:
             await sio.leave_room(sid, room, namespace=namespace)
     return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
-
 
 # ---------------- Socket.IO Events ----------------
 @sio.event
@@ -212,11 +228,11 @@ async def join(sid, data):
 
     old_sid = ROOM_USERS[room].get(username)
 
-    # 👉 Already joined with same sid → do nothing
+    # Already joined with same sid → do nothing
     if old_sid == sid:
         return {"success": True, "message": "Already in room"}
 
-    # If joined from another device/browser → replace old sid
+    # Joined from another device/browser → replace old sid
     if old_sid and old_sid != sid:
         try:
             await sio.leave_room(old_sid, room)
@@ -244,9 +260,7 @@ async def join(sid, data):
                 to=sid,
             )
         else:
-            await sio.emit(
-                "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
-            )
+            await sio.emit("message", {"sender": sender_, "text": text, "ts": ts}, to=sid)
 
     # Don’t send "joined" system msg on reload
     if not old_sid:
@@ -263,33 +277,18 @@ async def join(sid, data):
     return {"success": True}
 
 
-from urllib.parse import urlparse
-
-
-def normalize_endpoint(endpoint: str) -> str:
-    """Normalize push endpoint so the same device matches reliably."""
-    if not endpoint:
-        return None
-    try:
-        parsed = urlparse(endpoint)
-        # Keep only scheme + netloc + path (drop query/fragment/etc.)
-        return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
-    except Exception:
-        return endpoint.split("?")[0] if endpoint else endpoint
-
-
 @sio.event
 async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # 👈 sender’s subscription object
+    sender_sub = data.get("subscription")  # sender’s subscription object
     now = datetime.now(timezone.utc)
 
     if not text:
         return
 
-    # 🛑 Duplicate filter
+    # Duplicate filter (same text within 1.5s from same user in same room)
     key = (room, sender)
     last = LAST_MESSAGE.get(key)
     if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
@@ -299,18 +298,12 @@ async def message(sid, data):
     if room in DESTROYED_ROOMS:
         return
 
-    # ✅ Save to DB
+    # Save + emit to room (real-time)
     save_message(room, sender, text=text)
-
-    # ✅ Emit to room (real-time via socket.io)
-    await sio.emit(
-        "message",
-        {"sender": sender, "text": text, "ts": now.isoformat()},
-        room=room,
-    )
+    await sio.emit("message", {"sender": sender, "text": text, "ts": now.isoformat()}, room=room)
     print(f"🟢 Message emitted in room {room}: {sender}: {text}")
 
-    # ✅ Build push payload
+    # Build push payload
     payload = {
         "title": f"New message in {room}",
         "body": f"{sender}: {text}",
@@ -318,7 +311,7 @@ async def message(sid, data):
         "timestamp": now.isoformat(),
     }
 
-    # ✅ Extract and normalize sender endpoint
+    # Extract and normalize sender endpoint
     sender_endpoint = None
     if sender_sub and isinstance(sender_sub, dict):
         sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))
@@ -326,36 +319,33 @@ async def message(sid, data):
     else:
         print("⚠️ No subscription provided with message")
 
-    # ✅ Iterate over all users’ subscriptions (global dict)
-    # ✅ Iterate over all users’ subscriptions
-    for user, subs in subscriptions.copy().items():
-        for sub in subs:
+    # Fan out pushes to all users' subscriptions (skip sender device)
+    for user, subs in list(subscriptions.items()):
+        for sub in list(subs):
             if not sub:
                 continue
-
             target_endpoint = normalize_endpoint(sub.get("endpoint"))
             print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
-            # 🚫 Skip exact sender device (same endpoint)
+            # Skip exact sender device
             if sender_endpoint and target_endpoint == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
-
-            # 🚫 Extra fallback: skip ALL of sender’s subs if no endpoint provided
+            # Extra fallback: skip ALL of sender’s subs if no endpoint info
             if not sender_endpoint and user == sender:
                 print(f"⏭️ Skipping all pushes for sender {sender} (no endpoint info)")
                 continue
 
             try:
-                print(f"📤 Sending push to {user} ({target_endpoint[:50]})...")
-                webpush(
-                    subscription_info=sub,
-                    data=json.dumps(payload),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
-                )
+                print(f"📤 Sending push to {user} ({(target_endpoint or '')[:50]}...)")
+                await send_webpush_async(sub, payload)
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
+                # Optional: cleanup dead subscription
+                try:
+                    subs.remove(sub)
+                except ValueError:
+                    pass
 
 
 @sio.event
@@ -411,8 +401,8 @@ async def disconnect(sid):
     for room, users in list(ROOM_USERS.items()):
         for username, user_sid in list(users.items()):
             if user_sid == sid:
-                # make sure not reconnected with new sid
-                if ROOM_USERS[room].get(username) != sid:
+                # if the user reconnected with a new sid, keep them
+                if ROOM_USERS.get(room, {}).get(username) != sid:
                     continue
                 del users[username]
                 if not users:
@@ -428,7 +418,6 @@ async def disconnect(sid):
                     room=room,
                 )
 
-
 # ---------------- Background Cleanup + KeepAlive ----------------
 @app.on_event("startup")
 async def startup_tasks():
@@ -436,14 +425,11 @@ async def startup_tasks():
         while True:
             deleted = cleanup_old_messages()
             if deleted > 0:
-                await sio.emit(
-                    "cleanup",
-                    {"message": f"{deleted} old messages (48h+) were removed."},
-                )
+                await sio.emit("cleanup", {"message": f"{deleted} old messages (48h+) were removed."})
             await asyncio.sleep(3600)
 
     async def ping_self():
-        url = "https://realtime-chat-1mv3.onrender.com"
+        url = KEEPALIVE_URL
         while True:
             try:
                 async with aiohttp.ClientSession() as session:
@@ -456,10 +442,7 @@ async def startup_tasks():
     asyncio.create_task(loop_cleanup())
     asyncio.create_task(ping_self())
 
-
-# ----------------------
-# REST endpoint to subscribe
-# ----------------------
+# ---------------- REST endpoint to subscribe ----------------
 @app.post("/api/subscribe")
 async def subscribe(request: Request):
     body = await request.json()
@@ -471,7 +454,7 @@ async def subscribe(request: Request):
 
     subs = subscriptions.setdefault(sender, [])
 
-    # ✅ Normalize endpoint for reliable deduplication
+    # Normalize endpoint for reliable deduplication
     endpoint = normalize_endpoint(subscription.get("endpoint"))
     if not endpoint:
         return JSONResponse({"error": "invalid endpoint"}, status_code=400)
@@ -482,39 +465,35 @@ async def subscribe(request: Request):
     print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}"}
 
-# ----------------------
-# Test push endpoint
-# ----------------------
+# ---------------- Test push endpoint ----------------
 @app.post("/send-push-notification")
 async def send_push_notification():
     payload = {"title": "Test Message", "body": "This is a test notification."}
-    for sub in subscriptions.copy():
-        try:
-            print(f"📤 Sending push to {sub['endpoint'][:50]}...")
-            webpush(
-                subscription_info=sub,
-                data=json.dumps(payload),
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": "mailto:example@domain.com"},
-            )
-        except WebPushException as e:
-            print(f"❌ Push failed: {e}")
+    # iterate properly over user -> [subs]
+    for user, subs in list(subscriptions.items()):
+        for sub in list(subs):
+            try:
+                ep = (sub.get("endpoint") or "")[:50]
+                print(f"📤 Sending push to {user} ({ep}...)")
+                await send_webpush_async(sub, payload)
+            except WebPushException as e:
+                print(f"❌ Push failed for {user}: {e}")
+                try:
+                    subs.remove(sub)
+                except ValueError:
+                    pass
     return {"status": "Push notification sent"}
-
 
 # ---------------- Static Files ----------------
 app.mount("/icons", StaticFiles(directory="icons"), name="icons")
-
 
 @app.get("/manifest.json")
 async def manifest():
     return FileResponse(os.path.join(BASE_DIR, "manifest.json"))
 
-
 @app.get("/sw.js")
 async def service_worker():
     return FileResponse(os.path.join(BASE_DIR, "sw.js"))
-
 
 @app.get("/sitemap.xml")
 def sitemap():
@@ -533,31 +512,24 @@ def sitemap():
     xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for page in static_pages:
         url = page.replace("index.html", "")
-        if url == "":
-            loc = f"{base_url}/"
-        else:
-            loc = f"{base_url}/{url}"
+        loc = f"{base_url}/" if url == "" else f"{base_url}/{url}"
         xml += f"  <url><loc>{loc}</loc></url>\n"
     xml += "</urlset>"
     return Response(content=xml, media_type="application/xml")
-
 
 @app.get("/ads.txt")
 def ads():
     return FileResponse("ads.txt", media_type="text/plain")
 
-
 @app.get("/robots.txt")
 def robots():
     return FileResponse("robots.txt", media_type="text/plain")
-
 
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
 
 # ---------------- Run Server ----------------
 if __name__ == "__main__":
     import uvicorn
-
     init_db()
     migrate_db()
     local_ip = socket.gethostbyname(socket.gethostname())

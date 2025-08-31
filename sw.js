@@ -51,32 +51,16 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+// ✅ Handle push events (no duplicate timestamp shown)
 self.addEventListener("push", event => {
   const data = event.data ? event.data.json() : {};
   console.log("📩 Push event received:", data);
-
-  // Format relative time
-  let relativeTime = "Now";
-  if (data.timestamp) {
-    const diffMs = Date.now() - new Date(data.timestamp).getTime();
-    const diffSec = Math.floor(diffMs / 1000);
-
-    if (diffSec < 60) {
-      relativeTime = "Now";
-    } else if (diffSec < 3600) {
-      relativeTime = `${Math.floor(diffSec / 60)}m`;
-    } else if (diffSec < 86400) {
-      relativeTime = `${Math.floor(diffSec / 3600)}h`;
-    } else {
-      relativeTime = `${Math.floor(diffSec / 86400)}d`;
-    }
-  }
 
   // Always use custom title
   const title = "Realtime Chat";
 
   const options = {
-    body: `${data.body || "No body"}\n${relativeTime}`,
+    body: data.body || "New message",
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
@@ -89,6 +73,7 @@ self.addEventListener("push", event => {
   );
 });
 
+// ✅ Handle click on notification
 self.addEventListener("notificationclick", event => {
   event.notification.close();
 
