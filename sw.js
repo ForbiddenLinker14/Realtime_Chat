@@ -98,7 +98,7 @@ self.addEventListener("push", event => {
   const title = "Realtime Chat";
 
   const options = {
-    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}\n${relativeTime}`,
+    body: `${data.title ? data.title + ": " : ""}${data.body || "No body"}`,
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     data: {
