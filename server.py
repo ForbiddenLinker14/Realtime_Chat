@@ -33,6 +33,7 @@ load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")
 
+
 # ---------------- Database ----------------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -154,6 +155,7 @@ sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 app.mount("/socket.io", sio_app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 # ---------------- Helper ----------------
 async def broadcast_users(room):
@@ -358,23 +360,29 @@ async def message(sid, data):
 
             print(f"🔍 Comparing sender={sender_endpoint} vs target={target_endpoint}")
 
-            # Skip exact sender device (same endpoint)
+            # 🚫 Skip exact sender device (same endpoint)
             if sender_endpoint and target_endpoint == sender_endpoint:
                 print(f"⏭️ Skipping push for sender {sender} (same endpoint)")
                 continue
 
-            # Extra fallback: skip ALL of sender’s subs if no endpoint provided
+            # 🚫 Skip all pushes for sender if no endpoint info
             if not sender_endpoint and user == sender:
                 print(f"⏭️ Skipping all pushes for sender {sender} (no endpoint info)")
                 continue
 
-            # De-dup guard: prevent duplicate pushes of the same payload to same endpoint
+            # 🚫 Skip push if user is active in ANY room
+            is_active_anywhere = any(user in users for users in ROOM_USERS.values())
+            if is_active_anywhere:
+                print(f"⏭️ {user} is active in some room, skipping push.")
+                continue
+
+            # ✅ Deduplication check
             if not should_send_push(target_endpoint, push_id, now):
                 print(f"⏭️ Duplicate push suppressed for endpoint {target_endpoint}")
                 continue
 
             try:
-                print(f"📤 Sending push to {user} ({target_endpoint[:50]})...")
+                print(f"📤 Sending push to {user} ({target_endpoint[:50]}...)")
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
@@ -383,7 +391,6 @@ async def message(sid, data):
                 )
             except WebPushException as e:
                 print(f"❌ Push failed for {user}: {e}")
-
 
 @sio.event
 async def file(sid, data):
@@ -494,7 +501,9 @@ async def subscribe(request: Request):
     sender = body.get("sender")
 
     if not sender or not subscription:
-        return JSONResponse({"error": "sender + subscription required"}, status_code=400)
+        return JSONResponse(
+            {"error": "sender + subscription required"}, status_code=400
+        )
 
     subs = subscriptions.setdefault(sender, [])
 
@@ -516,7 +525,11 @@ async def subscribe(request: Request):
 @app.post("/send-push-notification")
 async def send_push_notification():
     now = datetime.now(timezone.utc)
-    payload = {"title": "Test Message", "body": "This is a test notification.", "timestamp": now.isoformat()}
+    payload = {
+        "title": "Test Message",
+        "body": "This is a test notification.",
+        "timestamp": now.isoformat(),
+    }
     push_id = make_push_id("TEST", "system", payload["body"], payload["timestamp"])
     for user, subs in list(subscriptions.items()):
         for sub in list(subs):
