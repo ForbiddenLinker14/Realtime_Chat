@@ -11,5 +11,6 @@ pydantic
 httpx
 jinja2
 watchfiles
+python-dateutil
 
 
