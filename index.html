@@ -461,6 +461,62 @@
         overflow-y: auto;
       }
     }
+
+    /* Gradient text title */
+    .chat-title {
+      font-size: 1.2em;
+      cursor: pointer;
+      display: inline-block;
+      color: #43e97b;
+      /* initial solid green */
+      transition: color 0.3s ease;
+    }
+
+    /* On hover: switch to gradient shimmer */
+    .chat-title:hover {
+      background: linear-gradient(90deg,
+          #4facfe,
+          #00f2fe,
+          #43e97b,
+          #38f9d7,
+          #4facfe);
+      background-size: 300% auto;
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientMove 3s linear infinite;
+    }
+
+    @keyframes gradientMove {
+      0% {
+        background-position: 0% center;
+      }
+
+      100% {
+        background-position: 100% center;
+      }
+    }
+
+    /* Add this CSS to hide elements immediately */
+    #chat-container,
+    #input-area,
+    #messages {
+      display: none;
+    }
+
+    /* Show intro by default */
+    #intro {
+      display: block;
+    }
+
+    /*after join flick fix */
+    #intro,
+    #chat-container,
+    #input-area,
+    #messages {
+      display: none;
+      /* all hidden until JS decides */
+    }
   </style>
 </head>
 
@@ -469,7 +525,7 @@
 
   <div id="sidebar">
     <div id="toggle-arrow" onclick="toggleSidebar()">«</div>
-    <h2 style="font-size:1.2em;">💬 Realtime Chat</h2>
+    <h2 id="chat-title" class="chat-title" style="font-size:1.2em; cursor:pointer;">💬 Realtime Chat</h2>
 
     <label>Your Name:</label>
     <input id="name" type="text" placeholder="e.g. Anit" />
@@ -616,23 +672,23 @@
     </div>
   </div>
 
-  
+
   <script>
     // =============== Storage with graceful fallback ===============
     const Storage = {
       set(k, v) {
-        try { localStorage.setItem(k, v); return; } catch {}
-        try { sessionStorage.setItem(k, v); return; } catch {}
+        try { localStorage.setItem(k, v); return; } catch { }
+        try { sessionStorage.setItem(k, v); return; } catch { }
         document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
       },
       get(k) {
-        try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch {}
+        try { return localStorage.getItem(k) || sessionStorage.getItem(k); } catch { }
         const m = document.cookie.match(new RegExp("(^| )" + k + "=([^;]+)"));
         return m ? decodeURIComponent(m[2]) : null;
       },
       remove(k) {
-        try { localStorage.removeItem(k); } catch {}
-        try { sessionStorage.removeItem(k); } catch {}
+        try { localStorage.removeItem(k); } catch { }
+        try { sessionStorage.removeItem(k); } catch { }
         document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
       }
     };
@@ -733,8 +789,17 @@
       Storage.set("chat_name", currentName);
       Storage.set("chat_room", currentRoom);
 
-      document.getElementById("messages").innerHTML = "";
-      lastPersistedTs = null;
+      // ✅ Always show chat UI first
+      document.getElementById("chat-container").style.display = "flex";
+      document.getElementById("input-area").style.display = "flex";
+      document.getElementById("intro").style.display = "none";
+      document.getElementById("messages").style.display = "block";
+
+      if (joinedRooms.has(currentRoom)) {
+        console.log("⚠️ Already joined", currentRoom);
+        return;
+      }
+
       alreadyFetchingHistory = false;
       document.getElementById("input").disabled = false;
       document.getElementById("send").disabled = false;
@@ -999,31 +1064,50 @@
     });
 
     // Simple XSS-safe helpers for text we inject into HTML
-    function escapeHtml(s) { return (s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function escapeHtml(s) { return (s ?? "").replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
 
     // Initial setup
     window.addEventListener("load", async () => {
-      // Hide chat by default
-      document.getElementById("input-area").style.display = "none";
-      document.getElementById("chat-container").style.display = "none";
-      document.getElementById("messages").style.display = "none";
-      document.getElementById("intro").style.display = "none";
+      // All hidden by default, we only reveal after decision
 
-      // PWA notifications (SW is required for push)
       await requestNotificationPermission();
 
-      // Restore session, if any
       const savedName = Storage.get("chat_name");
       const savedRoom = Storage.get("chat_room");
+
       if (savedName && savedRoom) {
+        // Fill fields
         document.getElementById("name").value = savedName;
         document.getElementById("room").value = savedRoom;
-        setTimeout(() => joinRoom(), 600);
+
+        // ✅ Directly rejoin without showing intro
+        joinRoom({ preserveMessages: true });
       } else {
+        // No saved session → show intro
         document.getElementById("intro").style.display = "block";
       }
     });
+
+    // Clicking title allows rejoining (if session exists) or shows intro
+    document.getElementById("chat-title").addEventListener("click", () => {
+      const savedName = Storage.get("chat_name");
+      const savedRoom = Storage.get("chat_room");
+
+      if (savedName && savedRoom) {
+        // Already have session, rejoin room
+        document.getElementById("name").value = savedName;
+        document.getElementById("room").value = savedRoom;
+        joinRoom();
+      } else {
+        // No saved session, show intro page
+        document.getElementById("chat-container").style.display = "none";
+        document.getElementById("input-area").style.display = "none";
+        document.getElementById("messages").style.display = "none";
+        document.getElementById("intro").style.display = "block";
+      }
+    });
+
   </script>
 
 

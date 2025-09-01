@@ -92,18 +92,25 @@ self.addEventListener("push", event => {
 
 // ✅ Notification click handler
 self.addEventListener("notificationclick", event => {
-  event.notification.close();
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then(clientsArr => {
-      if (clientsArr.length > 0) {
-        const client = clientsArr[0];
-        client.focus();
+    (async () => {
+      // Close notification first (prevents lingering)
+      event.notification.close();
+
+      const allClients = await clients.matchAll({
+        type: "window",
+        includeUncontrolled: true
+      });
+
+      if (allClients.length > 0) {
+        const client = allClients[0];
+        await client.focus();
         if (event.notification.data?.url) {
-          client.navigate(event.notification.data.url);
+          await client.navigate(event.notification.data.url);
         }
       } else {
-        clients.openWindow(event.notification.data?.url || "/");
+        await clients.openWindow(event.notification.data?.url || "/");
       }
-    })
+    })()
   );
 });
