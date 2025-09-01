@@ -8,6 +8,8 @@ import hashlib
 from collections import deque
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
+from datetime import datetime, timezone
+from dateutil import parser as dateparser
 
 import socketio
 from fastapi import FastAPI, Request
@@ -224,13 +226,17 @@ async def destroy_room(room: str):
     return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
 
 
-# ---------------- Socket.IO Events ----------------
+# ---------------- Socket.IO Events -----------------
 @sio.event
 async def join(sid, data):
-    room = data["room"]
-    username = data["sender"]
-    last_ts = data.get("lastTs")
+    room = data.get("room")
+    username = data.get("sender")
+    last_ts = data.get("lastTs")  # comes from client
 
+    if not room or not username:
+        return {"success": False, "message": "Room or username missing"}
+
+    # Handle destroyed rooms
     if room in DESTROYED_ROOMS:
         DESTROYED_ROOMS.remove(room)
 
@@ -238,41 +244,54 @@ async def join(sid, data):
         ROOM_USERS[room] = {}
 
     old_sid = ROOM_USERS[room].get(username)
-
     if old_sid == sid:
         return {"success": True, "message": "Already in room"}
 
+    # If user reconnects, remove old sid
     if old_sid and old_sid != sid:
         try:
             await sio.leave_room(old_sid, room)
         except Exception:
             pass
 
+    # Save new sid
     ROOM_USERS[room][username] = sid
+    await sio.save_session(sid, {"username": username, "room": room})
     await sio.enter_room(sid, room)
+
+    # Send user list
     await broadcast_users(room)
 
-    # send only missed messages
+    # ✅ Parse cutoff timestamp from client
+    last_dt = dateparser.isoparse(last_ts) if last_ts else None
+
+    # ✅ Send only messages strictly after lastTs
     for sender_, text, filename, mimetype, filedata, ts in load_messages(room):
-        if last_ts and ts <= last_ts:
+        ts_dt = dateparser.isoparse(ts)
+
+        # If client gave a cutoff, skip all older/equal messages
+        if last_dt and ts_dt <= last_dt:
             continue
+
+        payload = {
+            "sender": sender_,
+            "ts": ts,
+        }
+
         if filename:
-            await sio.emit(
-                "file",
+            payload.update(
                 {
-                    "sender": sender_,
                     "filename": filename,
                     "mimetype": mimetype,
                     "data": filedata,
-                    "ts": ts,
-                },
-                to=sid,
+                }
             )
+            await sio.emit("file", payload, to=sid)
         else:
-            await sio.emit(
-                "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
-            )
+            payload.update({"text": text})
+            await sio.emit("message", payload, to=sid)
 
+    # ✅ Only announce join if it’s a fresh join
     if not old_sid:
         await sio.emit(
             "message",
@@ -283,7 +302,8 @@ async def join(sid, data):
             },
             room=room,
         )
-    return {"success": True}
+
+    return {"success": True, "message": f"Joined room {room}"}
 
 
 @sio.event
