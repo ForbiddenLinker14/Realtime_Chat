@@ -473,7 +473,7 @@ async def startup_tasks():
             try:
                 async with aiohttp.ClientSession() as session:
                     async with session.get(url) as resp:
-                        print(f"[KeepAlive] [Rinning...] {resp.status}")
+                        print(f"[KeepAlive] [Running...] {resp.status}")
             except Exception as e:
                 print(f"[KeepAlive] Error: {e}")
             await asyncio.sleep(300)
