@@ -832,36 +832,7 @@
         });
       }
 
-      // socket listeners (align with server events)
-      socket.on("users_update", data => {
-        if (!currentRoom || data.room !== currentRoom) return;
-        const list = document.getElementById("user-list");
-        const seen = new Set();
-        const existing = new Map();
-        list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
-        data.users.forEach(u => {
-          if (seen.has(u.name)) return;
-          seen.add(u.name);
-          const color = u.status === "online" ? "#25d366" : "red";
-          const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
-          let li = existing.get(u.name);
-          if (li) {
-            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-            existing.delete(u.name);
-          } else {
-            li = document.createElement("li");
-            li.setAttribute("data-name", u.name);
-            li.className = "fade-in";
-            li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-            list.appendChild(li);
-          }
-        });
-        existing.forEach(li => {
-          li.classList.add("fade-out");
-          setTimeout(() => li.remove(), 300);
-        });
-      });
-
+      socket.on("users_update", updateUserList);
       socket.on("left_room", data => { if (data.room === currentRoom) document.getElementById("user-list").innerHTML = ""; });
       socket.on("room_destroyed", handleRoomDestroyed);
       socket.on("clear", handleRoomCleared);
@@ -983,17 +954,25 @@
       reader.readAsDataURL(file);
     }
 
+    // Reusable function
     function updateUserList(data) {
       if (!currentRoom || data.room !== currentRoom) return;
+
       const list = document.getElementById("user-list");
       const seen = new Set();
       const existing = new Map();
-      list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
+
+      list.querySelectorAll("li").forEach(li =>
+        existing.set(li.getAttribute("data-name"), li)
+      );
+
       data.users.forEach(u => {
         if (seen.has(u.name)) return;
         seen.add(u.name);
+
         const color = u.status === "online" ? "#25d366" : "red";
         const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
+
         let li = existing.get(u.name);
         if (li) {
           li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
@@ -1006,6 +985,8 @@
           list.appendChild(li);
         }
       });
+
+      // Remove old users smoothly
       existing.forEach(li => {
         li.classList.add("fade-out");
         setTimeout(() => li.remove(), 300);
