@@ -694,56 +694,96 @@
     };
 
     // =============== db for offline message ===============
+
+    // ✅ Open IndexedDB
     function openDB() {
       return new Promise((resolve, reject) => {
         const request = indexedDB.open("chatDB", 1);
-        request.onerror = (event) => reject("❌ IndexedDB error:", event);
+
+        request.onerror = (event) => {
+          console.error("❌ IndexedDB error:", event);
+          reject(event);
+        };
+
         request.onsuccess = (event) => {
           db = event.target.result;
+          console.log("📂 IndexedDB opened");
           resolve(db);
         };
+
         request.onupgradeneeded = (event) => {
           db = event.target.result;
           if (!db.objectStoreNames.contains("outbox")) {
             db.createObjectStore("outbox", { keyPath: "ts" });
+            console.log("🆕 IndexedDB schema ready: 'outbox' store created");
           }
         };
       });
     }
 
-    // ✅ Save unsent message to IndexedDB
+    // ✅ Save unsent message
     async function saveMessage(msg) {
       if (!db) await openDB();
+
       return new Promise((resolve, reject) => {
         const tx = db.transaction("outbox", "readwrite");
-        tx.objectStore("outbox").put(msg);
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = (e) => reject(e);
+        const store = tx.objectStore("outbox");
+        store.put(msg);
+
+        tx.oncomplete = () => {
+          console.log("💾 Saved offline message:", msg);
+          resolve(true);
+        };
+
+        tx.onerror = (event) => {
+          console.error("❌ Failed to save message:", msg, event);
+          reject(event);
+        };
       });
     }
 
     // ✅ Get all pending messages
     async function getPendingMessages() {
       if (!db) await openDB();
+
       return new Promise((resolve, reject) => {
         const tx = db.transaction("outbox", "readonly");
         const store = tx.objectStore("outbox");
-        const req = store.getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = (e) => reject(e);
+        const request = store.getAll();
+
+        request.onsuccess = () => {
+          console.log("📦 Retrieved pending messages:", request.result);
+          resolve(request.result || []);
+        };
+
+        request.onerror = (event) => {
+          console.error("❌ Failed to retrieve pending messages:", event);
+          reject(event);
+        };
       });
     }
 
     // ✅ Clear a message after successful sync
     async function clearMessage(ts) {
       if (!db) await openDB();
+
       return new Promise((resolve, reject) => {
         const tx = db.transaction("outbox", "readwrite");
-        tx.objectStore("outbox").delete(ts);
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = (e) => reject(e);
+        const store = tx.objectStore("outbox");
+        store.delete(ts);
+
+        tx.oncomplete = () => {
+          console.log("🗑️ Cleared message from outbox:", ts);
+          resolve(true);
+        };
+
+        tx.onerror = (event) => {
+          console.error("❌ Failed to clear message:", ts, event);
+          reject(event);
+        };
       });
     }
+
 
     // =============== Push Notifications ===============
     const VAPID_PUBLIC_KEY = 'BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw';
@@ -934,21 +974,14 @@
 
       const inputEl = document.getElementById("input");
       const text = inputEl.value.trim();
-
       if (!text || !currentRoom) return;
 
       sending = true;
       document.getElementById("send").disabled = true;
 
-      const msg = {
-        room: currentRoom,
-        sender: currentName,
-        text,
-        ts: Date.now(),
-      };
+      const msg = { room: currentRoom, sender: currentName, text, ts: Date.now() };
 
       try {
-        // ensure push subscription exists
         await subscribeUser(currentName);
         const savedSub = localStorage.getItem("pushSub");
         msg.subscription = savedSub ? JSON.parse(savedSub) : null;
@@ -958,23 +991,14 @@
       }
 
       if (navigator.onLine) {
-        // Try sending immediately via socket
-        try {
-          socket.emit("message", msg, () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-            console.log("✅ Sent immediately:", msg);
-          });
-        } catch (err) {
-          console.warn("❌ Socket failed online, saving offline:", msg);
-          await saveMessage(msg);
-          registerSync();
+        console.log("🌐 Online → trying to send immediately:", msg);
+        socket.emit("message", msg, () => {
+          console.log("✅ Sent via socket:", msg);
           sending = false;
           document.getElementById("send").disabled = false;
-        }
+        });
       } else {
-        // Offline, save for later
-        console.log("📴 Offline, saving:", msg);
+        console.log("📴 Offline → saving message:", msg);
         await saveMessage(msg);
         registerSync();
         sending = false;
@@ -984,12 +1008,12 @@
       inputEl.value = "";
     }
 
-    // ✅ Register background sync request
+    // Background sync request
     function registerSync() {
       if ("serviceWorker" in navigator && "SyncManager" in window) {
         navigator.serviceWorker.ready.then((registration) => {
           registration.sync.register("sync-messages");
-          console.log("🔄 Sync registered");
+          console.log("🔄 Sync registered for pending messages");
         });
       }
     }
@@ -1225,34 +1249,60 @@
     window.addEventListener('focus', () => sendActive(true));
     window.addEventListener('blur', () => sendActive(false));
 
+    // Handle going offline
     window.addEventListener("offline", () => {
+      console.log("📴 Offline detected. Disconnecting socket...");
       if (socket && socket.connected) socket.disconnect();
     });
 
+    // Handle going back online
     let reconnectTimer;
-    window.addEventListener("online", () => {
+    window.addEventListener("online", async () => {
+      console.log("🔌 Back online! Checking for unsent messages...");
+
       clearTimeout(reconnectTimer);
-      reconnectTimer = setTimeout(() => {
+      reconnectTimer = setTimeout(async () => {
+        // Reconnect socket if needed
         if (socket && !socket.connected && currentRoom && currentName) {
           socket.connect();
           socket.emit("join", {
             room: currentRoom,
             sender: currentName,
-            lastTs: lastPersistedTs || null
+            lastTs: lastPersistedTs || null,
           });
+          console.log("🔄 Socket reconnected and joined room:", currentRoom);
         }
-      }, 300);
+
+        // Check pending messages in IndexedDB
+        if (db) {
+          const pending = await getPendingMessages();
+          if (pending.length > 0) {
+            console.log("📦 Pending messages in outbox:", pending);
+
+            // Optionally resend pending messages immediately
+            for (const msg of pending) {
+              console.log("🔄 Resending pending message:", msg);
+              socket.emit("message", msg, async () => {
+                await clearMessage(msg.ts);
+                console.log("✅ Message resent and cleared from outbox:", msg.ts);
+              });
+            }
+          } else {
+            console.log("📭 No pending messages in outbox");
+          }
+        }
+      }, 300); // small delay to allow network stabilization
     });
 
     // Listen for SW requests to resend messages
     navigator.serviceWorker.addEventListener("message", async (event) => {
       if (event.data.type === "RESEND_MESSAGE") {
         const msg = event.data.msg;
-        console.log("🔄 Resending from background:", msg);
+        console.log("📬 Client received RESEND request from SW:", msg);
 
         socket.emit("message", msg, async () => {
           await clearMessage(msg.ts);
-          console.log("✅ Resent and cleared:", msg);
+          console.log("✅ Resent from outbox and cleared:", msg);
         });
       }
     });
