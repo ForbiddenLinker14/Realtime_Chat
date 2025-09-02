@@ -693,6 +693,58 @@
       }
     };
 
+    // =============== db for offline message ===============
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open("chatDB", 1);
+        request.onerror = (event) => reject("❌ IndexedDB error:", event);
+        request.onsuccess = (event) => {
+          db = event.target.result;
+          resolve(db);
+        };
+        request.onupgradeneeded = (event) => {
+          db = event.target.result;
+          if (!db.objectStoreNames.contains("outbox")) {
+            db.createObjectStore("outbox", { keyPath: "ts" });
+          }
+        };
+      });
+    }
+
+    // ✅ Save unsent message to IndexedDB
+    async function saveMessage(msg) {
+      if (!db) await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("outbox", "readwrite");
+        tx.objectStore("outbox").put(msg);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = (e) => reject(e);
+      });
+    }
+
+    // ✅ Get all pending messages
+    async function getPendingMessages() {
+      if (!db) await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("outbox", "readonly");
+        const store = tx.objectStore("outbox");
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    // ✅ Clear a message after successful sync
+    async function clearMessage(ts) {
+      if (!db) await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("outbox", "readwrite");
+        tx.objectStore("outbox").delete(ts);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = (e) => reject(e);
+      });
+    }
+
     // =============== Push Notifications ===============
     const VAPID_PUBLIC_KEY = 'BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw';
 
@@ -756,6 +808,7 @@
     let lastPersistedTs = null;
     let alreadyFetchingHistory = false;
     let sending = false;
+    let db;
 
     // =============== Utility Functions ===============
     function escapeHtml(s) {
@@ -887,33 +940,58 @@
       sending = true;
       document.getElementById("send").disabled = true;
 
+      const msg = {
+        room: currentRoom,
+        sender: currentName,
+        text,
+        ts: Date.now(),
+      };
+
       try {
+        // ensure push subscription exists
         await subscribeUser(currentName);
         const savedSub = localStorage.getItem("pushSub");
-        const sub = savedSub ? JSON.parse(savedSub) : null;
-        console.log("🔑 Sub being sent:", sub);
-
-        socket.emit(
-          "message",
-          { room: currentRoom, sender: currentName, text, subscription: sub },
-          () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-          }
-        );
+        msg.subscription = savedSub ? JSON.parse(savedSub) : null;
       } catch (err) {
         console.error("❌ Subscription error:", err);
-        socket.emit(
-          "message",
-          { room: currentRoom, sender: currentName, text, subscription: null },
-          () => {
+        msg.subscription = null;
+      }
+
+      if (navigator.onLine) {
+        // Try sending immediately via socket
+        try {
+          socket.emit("message", msg, () => {
             sending = false;
             document.getElementById("send").disabled = false;
-          }
-        );
+            console.log("✅ Sent immediately:", msg);
+          });
+        } catch (err) {
+          console.warn("❌ Socket failed online, saving offline:", msg);
+          await saveMessage(msg);
+          registerSync();
+          sending = false;
+          document.getElementById("send").disabled = false;
+        }
+      } else {
+        // Offline, save for later
+        console.log("📴 Offline, saving:", msg);
+        await saveMessage(msg);
+        registerSync();
+        sending = false;
+        document.getElementById("send").disabled = false;
       }
 
       inputEl.value = "";
+    }
+
+    // ✅ Register background sync request
+    function registerSync() {
+      if ("serviceWorker" in navigator && "SyncManager" in window) {
+        navigator.serviceWorker.ready.then((registration) => {
+          registration.sync.register("sync-messages");
+          console.log("🔄 Sync registered");
+        });
+      }
     }
 
     function addMessage(data) {
@@ -1164,6 +1242,19 @@
           });
         }
       }, 300);
+    });
+
+    // Listen for SW requests to resend messages
+    navigator.serviceWorker.addEventListener("message", async (event) => {
+      if (event.data.type === "RESEND_MESSAGE") {
+        const msg = event.data.msg;
+        console.log("🔄 Resending from background:", msg);
+
+        socket.emit("message", msg, async () => {
+          await clearMessage(msg.ts);
+          console.log("✅ Resent and cleared:", msg);
+        });
+      }
     });
 
     // =============== Initialization ===============
