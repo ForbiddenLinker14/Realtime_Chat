@@ -79,12 +79,12 @@ def init_db():
         """
     )
 
-    # FCM tokens table
+    # FCM tokens table (with UNIQUE user)
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS fcm_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user TEXT NOT NULL,
+            user TEXT NOT NULL UNIQUE,
             token TEXT NOT NULL,
             ts TEXT NOT NULL
         )
@@ -119,6 +119,39 @@ def save_fcm_token(user: str, token: str):
         (user, token, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
+    conn.close()
+
+
+# ---------------- Migration: add UNIQUE(user) if missing ----------------
+def migrate_fcm_tokens():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Check if UNIQUE constraint exists
+    c.execute("PRAGMA index_list(fcm_tokens)")
+    indexes = c.fetchall()
+    has_unique = any("user" in row[1] for row in indexes)
+
+    if not has_unique:
+        print("⚡ Migrating fcm_tokens table to add UNIQUE(user)...")
+        c.execute("ALTER TABLE fcm_tokens RENAME TO fcm_tokens_old")
+        c.execute(
+            """
+            CREATE TABLE fcm_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT NOT NULL UNIQUE,
+                token TEXT NOT NULL,
+                ts TEXT NOT NULL
+            )
+            """
+        )
+        c.execute(
+            "INSERT OR IGNORE INTO fcm_tokens (user, token, ts) "
+            "SELECT user, token, ts FROM fcm_tokens_old"
+        )
+        c.execute("DROP TABLE fcm_tokens_old")
+        conn.commit()
+
     conn.close()
 
 
@@ -565,6 +598,7 @@ async def disconnect(sid):
 async def startup_tasks():
     init_db()
     migrate_db()
+    migrate_fcm_tokens() 
 
     global FCM_TOKENS
     FCM_TOKENS = load_fcm_tokens()
