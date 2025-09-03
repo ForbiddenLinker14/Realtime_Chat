@@ -15,7 +15,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, height=device-height" />
   <title>💬 Realtime Chat</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script type="module" src="push.js"></script>
+  <script type="module" src="/push.js"></script>
   <style>
     html,
     body {
@@ -829,7 +829,10 @@
         socket.disconnect();
       }
 
-      socket = io("/", { path: "/socket.io" });
+      const socket = io("https://realtime-chat-1mv3.onrender.com", {
+        path: "/socket.io",
+        transports: ["websocket"]
+      });
 
       function safeJoinWithRetry(attempt = 1) {
         if (!socket || !socket.connected) return;
@@ -1200,6 +1203,7 @@
   </script>
   <script type="module">
     import { initPush } from './push.js';
+
     document.addEventListener("DOMContentLoaded", () => {
       initPush();
     });
