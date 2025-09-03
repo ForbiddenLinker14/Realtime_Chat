@@ -1,0 +1,17 @@
+# Ignore database
+chat.db
+
+# Ignore Python cache
+__pycache__/
+
+# Ignore Node.js dependencies
+node_modules/
+
+# Ignore Android build folder
+android/
+
+# Ignore local env files
+.env
+
+# Ignore your personal text file
+my.txt
