@@ -834,6 +834,7 @@
         transports: ["websocket"]
       });
 
+
       function safeJoinWithRetry(attempt = 1) {
         if (!socket || !socket.connected) return;
         if (joinedRooms.has(currentRoom)) return;
