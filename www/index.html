@@ -1197,68 +1197,68 @@
       }
     });
   </script>
-<script>
-  document.addEventListener('DOMContentLoaded', async () => {
-    const { PushNotifications } = Capacitor.Plugins;
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const { PushNotifications } = Capacitor.Plugins;
 
-    if (!PushNotifications) {
-      console.error("❌ PushNotifications plugin not available");
-      return;
-    }
-
-    // Ask for permission
-    let permStatus = await PushNotifications.requestPermissions();
-    console.log("📌 Permission:", permStatus);
-
-    if (permStatus.receive === 'granted') {
-      await PushNotifications.register();
-    }
-
-    // Registration success → send token to backend
-    PushNotifications.addListener('registration', async (token) => {
-      console.log('📱 Push registration token:', token.value);
-
-      try {
-        await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: token.value,
-            user: localStorage.getItem("username") || "guest",
-          }),
-        });
-        console.log("📡 Token sent to backend");
-      } catch (err) {
-        console.error("❌ Failed to send token:", err);
+      if (!PushNotifications) {
+        console.error("❌ PushNotifications plugin not available");
+        return;
       }
-    });
 
-    // Errors
-    PushNotifications.addListener('registrationError', (err) => {
-      console.error('❌ Registration error:', err.error);
-    });
+      // Ask for permission
+      let permStatus = await PushNotifications.requestPermissions();
+      console.log("📌 Permission:", permStatus);
 
-    // Foreground push
-    PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      console.log('📩 Push received:', notification);
-    });
-
-    // Notification tapped
-    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      console.log('👉 Notification tapped:', action.notification);
-    });
-
-    // Example clear function
-    window.clearNotifications = async () => {
-      try {
-        await PushNotifications.removeAllDeliveredNotifications();
-        console.log("🧹 All notifications cleared");
-      } catch (err) {
-        console.error("❌ Failed to clear notifications:", err);
+      if (permStatus.receive === 'granted') {
+        await PushNotifications.register();
       }
-    };
-  });
-</script>
+
+      // Registration success → send token to backend
+      PushNotifications.addListener('registration', async (token) => {
+        console.log('📱 Push registration token:', token.value);
+
+        try {
+          await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: token.value,
+              user: localStorage.getItem("username") || "guest",
+            }),
+          });
+          console.log("📡 Token sent to backend");
+        } catch (err) {
+          console.error("❌ Failed to send token:", err);
+        }
+      });
+
+      // Errors
+      PushNotifications.addListener('registrationError', (err) => {
+        console.error('❌ Registration error:', err.error);
+      });
+
+      // Foreground push
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('📩 Push received:', notification);
+      });
+
+      // Notification tapped
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        console.log('👉 Notification tapped:', action.notification);
+      });
+
+      // Example clear function
+      window.clearNotifications = async () => {
+        try {
+          await PushNotifications.removeAllDeliveredNotifications();
+          console.log("🧹 All notifications cleared");
+        } catch (err) {
+          console.error("❌ Failed to clear notifications:", err);
+        }
+      };
+    });
+  </script>
 
 
 
