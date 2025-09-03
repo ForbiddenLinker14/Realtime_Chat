@@ -1,6 +1,6 @@
 # ---------------- server.py ----------------
 import os
-import json
+import json, base64
 import socket
 import sqlite3
 import asyncio
@@ -41,19 +41,17 @@ VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")  # required on server to send
 if not (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY):
     print("⚠️  Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in your .env")
 
-# ✅ Load .env locally (Render already provides env vars)
+# ✅ Load .env locally (Render will inject env vars automatically)
 load_dotenv()
 
-# ✅ Initialize Firebase from ENV instead of file
-firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS")
-if not firebase_creds_json:
-    raise RuntimeError("❌ Missing FIREBASE_CREDENTIALS in environment!")
+firebase_creds_b64 = os.getenv("FIREBASE_CREDENTIALS_BASE64")
+if not firebase_creds_b64:
+    raise RuntimeError("❌ FIREBASE_CREDENTIALS_BASE64 missing in environment!")
 
-firebase_creds = json.loads(firebase_creds_json)
+# 🔹 Decode Base64 → JSON
+firebase_creds = json.loads(base64.b64decode(firebase_creds_b64))
 
-# 🔧 Fix escaped newlines in private_key (important for Render/Heroku)
-firebase_creds["private_key"] = firebase_creds["private_key"].replace("\\n", "\n")
-
+# 🔹 Initialize Firebase Admin SDK
 cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 
