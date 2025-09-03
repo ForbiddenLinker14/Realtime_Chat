@@ -1197,53 +1197,69 @@
       }
     });
   </script>
-  <script>
-    document.addEventListener('DOMContentLoaded', async () => {
-      // Capacitor injects itself as a global
-      const { PushNotifications } = Capacitor.Plugins;
+<script>
+  document.addEventListener('DOMContentLoaded', async () => {
+    const { PushNotifications } = Capacitor.Plugins;
 
-      if (!PushNotifications) {
-        console.error("❌ PushNotifications plugin not available");
-        return;
+    if (!PushNotifications) {
+      console.error("❌ PushNotifications plugin not available");
+      return;
+    }
+
+    // Ask for permission
+    let permStatus = await PushNotifications.requestPermissions();
+    console.log("📌 Permission:", permStatus);
+
+    if (permStatus.receive === 'granted') {
+      await PushNotifications.register();
+    }
+
+    // Registration success → send token to backend
+    PushNotifications.addListener('registration', async (token) => {
+      console.log('📱 Push registration token:', token.value);
+
+      try {
+        await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: token.value,
+            user: localStorage.getItem("username") || "guest",
+          }),
+        });
+        console.log("📡 Token sent to backend");
+      } catch (err) {
+        console.error("❌ Failed to send token:", err);
       }
+    });
 
-      // Ask for permissions
-      let permStatus = await PushNotifications.requestPermissions();
-      console.log("📌 Permission:", permStatus);
+    // Errors
+    PushNotifications.addListener('registrationError', (err) => {
+      console.error('❌ Registration error:', err.error);
+    });
 
-      if (permStatus.receive === 'granted') {
-        await PushNotifications.register();
+    // Foreground push
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      console.log('📩 Push received:', notification);
+    });
+
+    // Notification tapped
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      console.log('👉 Notification tapped:', action.notification);
+    });
+
+    // Example clear function
+    window.clearNotifications = async () => {
+      try {
+        await PushNotifications.removeAllDeliveredNotifications();
+        console.log("🧹 All notifications cleared");
+      } catch (err) {
+        console.error("❌ Failed to clear notifications:", err);
       }
+    };
+  });
+</script>
 
-      // Listen for registration
-      PushNotifications.addListener('registration', (token) => {
-        console.log('📱 Push registration token:', token.value);
-      });
-
-      // Errors
-      PushNotifications.addListener('registrationError', (err) => {
-        console.error('❌ Registration error:', err.error);
-      });
-
-      // Foreground messages
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('📩 Push received:', notification);
-      });
-
-      // Tapped messages
-      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-        console.log('👉 Notification tapped:', action.notification);
-      });
-    });
-  </script>
-
-  <script type="module">
-    import { initPush } from './push.js';
-    document.addEventListener("DOMContentLoaded", () => {
-      console.log("🚀 DOM ready, calling initPush()");
-      initPush();
-    });
-  </script>
 
 
 
