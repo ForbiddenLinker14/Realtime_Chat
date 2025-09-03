@@ -42,8 +42,13 @@ if not (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY):
     print("⚠️  Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in your .env")
 
 
-# Initialize Firebase
-cred = credentials.Certificate("serviceAccountKey.json")
+# Initialize Firebase from ENV instead of file
+firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS")
+if not firebase_creds_json:
+    raise RuntimeError("❌ Missing FIREBASE_CREDENTIALS in environment!")
+
+firebase_creds = json.loads(firebase_creds_json)
+cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 
 
