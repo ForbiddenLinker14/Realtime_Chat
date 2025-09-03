@@ -887,40 +887,34 @@
 
       const inputEl = document.getElementById("input");
       const text = inputEl.value.trim();
-
       if (!text || !currentRoom) return;
 
       sending = true;
       document.getElementById("send").disabled = true;
 
+      let sub = null;
       try {
+        console.log("📌 Current permission:", Notification.permission);
+
         await subscribeUser(currentName);
         const savedSub = localStorage.getItem("pushSub");
-        const sub = savedSub ? JSON.parse(savedSub) : null;
-        console.log("🔑 Sub being sent:", sub);
-
-        socket.emit(
-          "message",
-          { room: currentRoom, sender: currentName, text, subscription: sub },
-          () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-          }
-        );
+        sub = savedSub ? JSON.parse(savedSub) : null;
       } catch (err) {
-        console.error("❌ Subscription error:", err);
-        socket.emit(
-          "message",
-          { room: currentRoom, sender: currentName, text, subscription: null },
-          () => {
-            sending = false;
-            document.getElementById("send").disabled = false;
-          }
-        );
+        console.warn("⚠️ Subscription failed, but sending message anyway:", err);
       }
+
+      socket.emit(
+        "message",
+        { room: currentRoom, sender: currentName, text, subscription: sub },
+        () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        }
+      );
 
       inputEl.value = "";
     }
+
 
     function addMessage(data) {
       const messages = document.getElementById("messages");
