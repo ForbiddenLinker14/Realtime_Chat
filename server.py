@@ -639,17 +639,6 @@ async def register_fcm(request: Request):
     print(f"✅ FCM token saved for {user} (persisted in DB)")
     return {"status": "ok"}
 
-
-import os
-from fastapi import FastAPI, Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
-app = FastAPI()
-
-# Base path for www folder
-BASE_DIR = os.path.join(os.path.dirname(__file__), "www")
-
 # ---------------- Static / PWA assets ----------------
 
 # serve /icons/*
