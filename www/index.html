@@ -1197,6 +1197,46 @@
       }
     });
   </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Capacitor injects itself as a global
+      const { PushNotifications } = Capacitor.Plugins;
+
+      if (!PushNotifications) {
+        console.error("❌ PushNotifications plugin not available");
+        return;
+      }
+
+      // Ask for permissions
+      let permStatus = await PushNotifications.requestPermissions();
+      console.log("📌 Permission:", permStatus);
+
+      if (permStatus.receive === 'granted') {
+        await PushNotifications.register();
+      }
+
+      // Listen for registration
+      PushNotifications.addListener('registration', (token) => {
+        console.log('📱 Push registration token:', token.value);
+      });
+
+      // Errors
+      PushNotifications.addListener('registrationError', (err) => {
+        console.error('❌ Registration error:', err.error);
+      });
+
+      // Foreground messages
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('📩 Push received:', notification);
+      });
+
+      // Tapped messages
+      PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+        console.log('👉 Notification tapped:', action.notification);
+      });
+    });
+  </script>
+
   <script type="module">
     import { initPush } from './push.js';
     document.addEventListener("DOMContentLoaded", () => {
