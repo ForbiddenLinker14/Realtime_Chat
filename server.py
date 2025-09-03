@@ -202,7 +202,8 @@ sio = socketio.AsyncServer(
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 app.mount("/socket.io", sio_app)
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+BASE_DIR = os.path.join(os.path.dirname(__file__), "www")
 
 
 # ---------------- Helpers ----------------
@@ -639,25 +640,43 @@ async def register_fcm(request: Request):
     return {"status": "ok"}
 
 
+import os
+from fastapi import FastAPI, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+app = FastAPI()
+
+# Base path for www folder
+BASE_DIR = os.path.join(os.path.dirname(__file__), "www")
+
 # ---------------- Static / PWA assets ----------------
-app.mount("/icons", StaticFiles(directory="icons"), name="icons")
+
+# serve /icons/*
+app.mount(
+    "/icons", StaticFiles(directory=os.path.join(BASE_DIR, "icons")), name="icons"
+)
 
 
+# serve manifest.json
 @app.get("/manifest.json")
 async def manifest():
     return FileResponse(os.path.join(BASE_DIR, "manifest.json"))
 
 
+# serve service worker
 @app.get("/sw.js")
 async def service_worker():
     return FileResponse(os.path.join(BASE_DIR, "sw.js"))
 
 
+# sitemap
 @app.get("/sitemap.xml")
 def sitemap():
-    base_url = "http://127.0.0.1:8000"
+    base_url = "http://127.0.0.1:8000"  # replace with your domain in production
     static_pages = ["index.html"]
-    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     for page in static_pages:
         url = page.replace("index.html", "")
         loc = f"{base_url}/" if url == "" else f"{base_url}/{url}"
@@ -666,12 +685,13 @@ def sitemap():
     return Response(content=xml, media_type="application/xml")
 
 
+# robots.txt
 @app.get("/robots.txt")
 def robots():
     return Response("User-agent: *\nAllow: /\n", media_type="text/plain")
 
 
-# Serve the static SPA root
+# serve everything inside www (index.html as root)
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="static")
 
 # ---------------- Run ----------------
