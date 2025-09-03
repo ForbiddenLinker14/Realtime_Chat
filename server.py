@@ -641,16 +641,13 @@ async def send_fcm(request: Request):
 
     token = FCM_TOKENS[user]
 
-    try:
-        msg = messaging.Message(
-            notification=messaging.Notification(title=title, body=message), token=token
-        )
-        response = messaging.send(msg)
-        print("✅ FCM sent:", response)
-        return {"status": "ok", "id": response}
-    except Exception as e:
-        print("❌ FCM failed:", e)
-        return JSONResponse({"error": str(e)}, status_code=500)
+    msg = messaging.Message(
+        notification=messaging.Notification(title=title, body=message),
+        token=token
+    )
+    response = messaging.send(msg)
+    print("✅ FCM sent:", response)
+    return {"status": "ok", "id": response}
 
 
 @app.post("/api/register-fcm")
@@ -662,12 +659,8 @@ async def register_fcm(request: Request):
     if not token or not user:
         return JSONResponse({"error": "user + token required"}, status_code=400)
 
-    # Save into DB
     save_fcm_token(user, token)
-
-    # Update in-memory cache
     FCM_TOKENS[user] = token
-
     print(f"✅ FCM token saved for {user} (persisted in DB)")
     return {"status": "ok"}
 
