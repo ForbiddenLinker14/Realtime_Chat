@@ -200,15 +200,21 @@ app = FastAPI()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins="*",
+    cors_allowed_origins=[
+        "https://realtime-chat-1mv3.onrender.com",  # your deployed site
+        "capacitor://localhost",  # Capacitor Android/iOS
+        "http://localhost",  # for local dev
+    ],
     max_http_buffer_size=10 * 1024 * 1024,
     ping_interval=3,
     ping_timeout=5,
 )
+
+# Important: use socketio_path="socket.io"
 sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 app.mount("/socket.io", sio_app)
 
-
+# Serve static files (your web app from "www" folder)
 BASE_DIR = os.path.join(os.path.dirname(__file__), "www")
 
 
