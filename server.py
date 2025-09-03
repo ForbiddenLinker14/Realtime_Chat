@@ -198,6 +198,21 @@ def clear_room(room):
 # ---------------- FastAPI + Socket.IO ----------------
 app = FastAPI()
 
+# 🔧 CORS fix (important for Android Capacitor apps)
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "*",
+        "http://localhost",
+        "https://localhost",
+    ],  # allow all or restrict
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
@@ -642,8 +657,7 @@ async def send_fcm(request: Request):
     token = FCM_TOKENS[user]
 
     msg = messaging.Message(
-        notification=messaging.Notification(title=title, body=message),
-        token=token
+        notification=messaging.Notification(title=title, body=message), token=token
     )
     response = messaging.send(msg)
     print("✅ FCM sent:", response)

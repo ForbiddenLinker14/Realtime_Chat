@@ -1,9 +1,5 @@
 {
   "appId": "com.realtimechat.chat",
   "appName": "Realtime Chat",
-  "webDir": "www",
-  "server": {
-    "url": "https://realtime-chat-1mv3.onrender.com",
-    "cleartext": false
-  }
+  "webDir": "www"
 }
