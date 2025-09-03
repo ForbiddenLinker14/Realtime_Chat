@@ -200,11 +200,7 @@ app = FastAPI()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=[
-        "https://realtime-chat-1mv3.onrender.com",  # your deployed site
-        "capacitor://localhost",  # Capacitor Android/iOS
-        "http://localhost",  # for local dev
-    ],
+    cors_allowed_origins="*",
     max_http_buffer_size=10 * 1024 * 1024,
     ping_interval=3,
     ping_timeout=5,
