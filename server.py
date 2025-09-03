@@ -41,13 +41,19 @@ VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY")  # required on server to send
 if not (VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY):
     print("⚠️  Set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY in your .env")
 
+# ✅ Load .env locally (Render already provides env vars)
+load_dotenv()
 
-# Initialize Firebase from ENV instead of file
+# ✅ Initialize Firebase from ENV instead of file
 firebase_creds_json = os.getenv("FIREBASE_CREDENTIALS")
 if not firebase_creds_json:
     raise RuntimeError("❌ Missing FIREBASE_CREDENTIALS in environment!")
 
 firebase_creds = json.loads(firebase_creds_json)
+
+# 🔧 Fix escaped newlines in private_key (important for Render/Heroku)
+firebase_creds["private_key"] = firebase_creds["private_key"].replace("\\n", "\n")
+
 cred = credentials.Certificate(firebase_creds)
 firebase_admin.initialize_app(cred)
 
