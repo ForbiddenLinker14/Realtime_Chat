@@ -829,10 +829,11 @@
         socket.disconnect();
       }
 
-      const socket = io("https://realtime-chat-1mv3.onrender.com", {
+      socket = io("https://realtime-chat-1mv3.onrender.com", {
         path: "/socket.io",
         transports: ["websocket"]
       });
+
 
 
       function safeJoinWithRetry(attempt = 1) {
@@ -1204,8 +1205,8 @@
   </script>
   <script type="module">
     import { initPush } from './push.js';
-
     document.addEventListener("DOMContentLoaded", () => {
+      console.log("🚀 DOM ready, calling initPush()");
       initPush();
     });
   </script>
