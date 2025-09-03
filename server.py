@@ -596,7 +596,7 @@ async def disconnect(sid):
 async def startup_tasks():
     init_db()
     migrate_db()
-    migrate_fcm_tokens() 
+    migrate_fcm_tokens()
 
     global FCM_TOKENS
     FCM_TOKENS = load_fcm_tokens()
@@ -648,15 +648,53 @@ async def subscribe(request: Request):
     return {"message": f"Subscribed {sender}", "vapidPublicKey": VAPID_PUBLIC_KEY}
 
 
+# @app.post("/send-push-notification")
+# async def send_push_notification():
+#     now = datetime.now(timezone.utc)
+#     payload = {
+#         "title": "Test Message",
+#         "body": "This is a test notification.",
+#         "timestamp": now.isoformat(),
+#     }
+#     push_id = make_push_id("TEST", "system", payload["body"], payload["timestamp"])
+#     for user, subs in list(subscriptions.items()):
+#         for sub in list(subs):
+#             try:
+#                 endpoint = normalize_endpoint(sub.get("endpoint"))
+#                 if not endpoint:
+#                     continue
+#                 if not should_send_push(endpoint, push_id, now):
+#                     continue
+#                 webpush(
+#                     subscription_info=sub,
+#                     data=json.dumps(payload),
+#                     vapid_private_key=VAPID_PRIVATE_KEY,
+#                     vapid_claims={"sub": "mailto:example@domain.com"},
+#                 )
+#             except WebPushException as e:
+#                 print(f"❌ Push failed for {user}: {e}")
+#     return {"status": "ok"}
+
+
+from firebase_admin import messaging
+
+
 @app.post("/send-push-notification")
 async def send_push_notification():
     now = datetime.now(timezone.utc)
+
+    title = "Test Message"
+    body = "This is a test notification."
+
     payload = {
-        "title": "Test Message",
-        "body": "This is a test notification.",
+        "title": title,
+        "body": body,
         "timestamp": now.isoformat(),
     }
+
     push_id = make_push_id("TEST", "system", payload["body"], payload["timestamp"])
+
+    # 🔹 1. Send Web Push (for browsers)
     for user, subs in list(subscriptions.items()):
         for sub in list(subs):
             try:
@@ -671,8 +709,33 @@ async def send_push_notification():
                     vapid_private_key=VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": "mailto:example@domain.com"},
                 )
+                print(f"🌍 Web push sent to {user}")
             except WebPushException as e:
-                print(f"❌ Push failed for {user}: {e}")
+                print(f"❌ Web Push failed for {user}: {e}")
+
+    # 🔹 2. Send FCM Push (for Android)
+    tokens = []
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT token FROM fcm_tokens")
+    rows = c.fetchall()
+    conn.close()
+
+    for (token,) in rows:
+        tokens.append(token)
+
+    for token in tokens:
+        message = messaging.Message(
+            notification=messaging.Notification(title=title, body=body),
+            data={"sender": "system", "message": body},
+            token=token,
+        )
+        try:
+            response = messaging.send(message)
+            print("📱 FCM push sent:", response)
+        except Exception as e:
+            print("❌ FCM push failed:", e)
+
     return {"status": "ok"}
 
 
