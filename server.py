@@ -109,7 +109,13 @@ def save_fcm_token(user: str, token: str):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO fcm_tokens (user, token, ts) VALUES (?, ?, ?)",
+        """
+        INSERT INTO fcm_tokens (user, token, ts)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user) DO UPDATE SET
+            token=excluded.token,
+            ts=excluded.ts
+        """,
         (user, token, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
@@ -621,6 +627,30 @@ async def send_push_notification():
     return {"status": "ok"}
 
 
+@app.post("/send-fcm")
+async def send_fcm(request: Request):
+    body = await request.json()
+    user = body.get("user")
+    title = body.get("title", "Chat Message")
+    message = body.get("message", "")
+
+    if not user or user not in FCM_TOKENS:
+        return JSONResponse({"error": "invalid user"}, status_code=400)
+
+    token = FCM_TOKENS[user]
+
+    try:
+        msg = messaging.Message(
+            notification=messaging.Notification(title=title, body=message), token=token
+        )
+        response = messaging.send(msg)
+        print("✅ FCM sent:", response)
+        return {"status": "ok", "id": response}
+    except Exception as e:
+        print("❌ FCM failed:", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/api/register-fcm")
 async def register_fcm(request: Request):
     body = await request.json()
@@ -638,6 +668,7 @@ async def register_fcm(request: Request):
 
     print(f"✅ FCM token saved for {user} (persisted in DB)")
     return {"status": "ok"}
+
 
 # ---------------- Static / PWA assets ----------------
 
