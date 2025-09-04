@@ -1381,24 +1381,33 @@
     });
   </script>
   <script type="module">
-    import { LocalNotifications } from '@capacitor/local-notifications';
-    import { PushNotifications } from '@capacitor/push-notifications';
+    import { Storage } from '@capacitor/storage';
+    import { PushNotifications, LocalNotifications } from '@capacitor/push-notifications';
 
-    // all your chat + push code (your existing functions, joinRoom, leaveRoom, subscribeUser, etc.)
+    async function saveChatState(username, room, lastTs) {
+      await Storage.set({ key: 'chatState', value: JSON.stringify({ username, room, lastTs }) });
+    }
 
-    // Foreground push → show banner even when app is open
-    PushNotifications.addListener('pushNotificationReceived', async (n) => {
-      console.log("📩 Push received (foreground):", n);
+    async function loadChatState() {
+      const { value } = await Storage.get({ key: 'chatState' });
+      return value ? JSON.parse(value) : null;
+    }
 
-      await LocalNotifications.schedule({
-        notifications: [{
-          id: Date.now(),
-          title: n.title || 'Realtime Chat',
-          body: n.body || `${(n.data?.sender) || ''}: ${(n.data?.message) || ''}`,
-          extra: n.data || {}
-        }]
+    // When joining a room
+    socket.emit('join', { room, sender: username, lastTs });
+
+    // Save state after join
+    saveChatState(username, room, new Date().toISOString());
+
+    // On app startup
+    const state = await loadChatState();
+    if (state) {
+      socket.emit('join', {
+        room: state.room,
+        sender: state.username,
+        lastTs: state.lastTs
       });
-    });
+    }
   </script>
 
 
