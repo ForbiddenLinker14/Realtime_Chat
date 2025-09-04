@@ -53,7 +53,9 @@ firebase_creds = json.loads(base64.b64decode(firebase_creds_b64))
 
 # 🔹 Initialize Firebase Admin SDK
 cred = credentials.Certificate(firebase_creds)
-firebase_admin.initialize_app(cred)
+
+if not firebase_admin._apps:  # <-- check before init
+    firebase_admin.initialize_app(cred)
 
 
 # ---------------- DB ----------------
