@@ -1300,6 +1300,13 @@
         }
       }
 
+      // 🛑 Unsubscribe from WebPush for this room
+      try {
+        await unsubscribeUser(currentName, currentRoom);
+      } catch (err) {
+        console.error("❌ Failed to unsubscribe WebPush:", err);
+      }
+
       // 🔌 Leave socket room
       socket.emit("leave", { room: currentRoom, sender: currentName });
       console.log(`🚪 Left room ${currentRoom}`);
