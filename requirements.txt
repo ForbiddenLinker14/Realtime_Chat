@@ -14,6 +14,7 @@ watchfiles
 # --- Push Notifications (Web + FCM) ---
 pywebpush
 cryptography
+
 # --- Firebase Admin SDK (for FCM) ---
 firebase-admin
 
@@ -22,4 +23,3 @@ python-dotenv
 pydantic
 python-dateutil
 jinja2
-
