@@ -804,11 +804,11 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
             try:
                 msg = messaging.Message(
                     notification=messaging.Notification(
-                        title="Realtime Chat", body=f"{sender}: {text}"
+                        title=f"Room {room}", body=f"{sender}: {text}"
                     ),
                     token=token,
                     data={
-                        "url": f"/?room={room}",
+                        "room": room,
                         "sender": sender,
                         "message": text,
                         "timestamp": now.isoformat(),
