@@ -25,7 +25,7 @@ DB_PATH = "chat.db"
 DESTROYED_ROOMS = set()
 ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
-subscriptions = {}  # username -> [subscription objects]
+# subscriptions = {}  # username -> [subscription objects]
 USER_STATUS = {}  # sid -> {"user": username, "active": bool}
 FCM_TOKENS = {}  # user -> token
 
