@@ -727,7 +727,7 @@
       return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
     }
 
-    async function subscribeUser(sender) {
+    async function subscribeUser(sender, room) {
       const registration = await navigator.serviceWorker.ready;
       let subscription = await registration.pushManager.getSubscription();
 
@@ -745,6 +745,7 @@
 
       const body = {
         sender: sender || "anonymous",
+        room: room || null,   // 👈 now includes room info
         subscription: subscription.toJSON()
       };
 
@@ -759,6 +760,25 @@
 
       console.log("✅ Backend response:", result.message);
       return subscription;
+    }
+
+    async function unsubscribeUser(sender, room) {
+      try {
+        const savedSub = localStorage.getItem("pushSub");
+        if (!savedSub) return;
+
+        const subscription = JSON.parse(savedSub);
+
+        await fetch("/api/unsubscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sender, room, subscription })
+        });
+
+        console.log(`🛑 Unsubscribed ${sender} from room ${room}`);
+      } catch (err) {
+        console.error("❌ Failed to unsubscribe:", err);
+      }
     }
 
     async function requestNotificationPermission() {
@@ -869,6 +889,11 @@
         transports: ["websocket"]
       });
 
+      // 👉 Subscribe user when joining room (not when sending message)
+      subscribeUser(currentName).catch(err =>
+        console.warn("⚠️ Subscription failed in joinRoom:", err)
+      );
+
       function safeJoinWithRetry(attempt = 1) {
         if (!socket || !socket.connected) return;
         if (joinedRooms.has(currentRoom)) return;
@@ -934,7 +959,7 @@
       try {
         console.log("📌 Current permission:", Notification.permission);
 
-        await subscribeUser(currentName);
+        // await subscribeUser(currentName);
         const savedSub = localStorage.getItem("pushSub");
         sub = savedSub ? JSON.parse(savedSub) : null;
       } catch (err) {
@@ -1171,6 +1196,8 @@
 
         console.log("✅", data.message);
 
+        unsubscribeUser(currentName, currentRoom);
+
         // reset UI
         document.getElementById("messages").innerHTML = "";
         addMessage({
@@ -1202,6 +1229,7 @@
       }
 
       const leftRoom = currentRoom;
+      unsubscribeUser(currentName, currentRoom);
       socket.emit("leave", { room: currentRoom, sender: currentName });
 
       document.getElementById("input").disabled = true;
