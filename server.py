@@ -137,48 +137,48 @@ def save_fcm_token(user: str, token: str):
 
 
 # ---------------- Migration: add UNIQUE(user) if missing ----------------
-def migrate_fcm_tokens():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
+# def migrate_fcm_tokens():
+#     conn = sqlite3.connect(DB_PATH)
+#     c = conn.cursor()
 
-    # Check if UNIQUE constraint exists
-    c.execute("PRAGMA index_list(fcm_tokens)")
-    indexes = c.fetchall()
-    has_unique = any("user" in row[1] for row in indexes)
+#     # Check if UNIQUE constraint exists
+#     c.execute("PRAGMA index_list(fcm_tokens)")
+#     indexes = c.fetchall()
+#     has_unique = any("user" in row[1] for row in indexes)
 
-    if not has_unique:
-        print("⚡ Migrating fcm_tokens table to add UNIQUE(user)...")
-        c.execute("ALTER TABLE fcm_tokens RENAME TO fcm_tokens_old")
-        c.execute(
-            """
-            CREATE TABLE fcm_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user TEXT NOT NULL UNIQUE,
-                token TEXT NOT NULL,
-                ts TEXT NOT NULL
-            )
-            """
-        )
-        c.execute(
-            "INSERT OR IGNORE INTO fcm_tokens (user, token, ts) "
-            "SELECT user, token, ts FROM fcm_tokens_old"
-        )
-        c.execute("DROP TABLE fcm_tokens_old")
-        conn.commit()
+#     if not has_unique:
+#         print("⚡ Migrating fcm_tokens table to add UNIQUE(user)...")
+#         c.execute("ALTER TABLE fcm_tokens RENAME TO fcm_tokens_old")
+#         c.execute(
+#             """
+#             CREATE TABLE fcm_tokens (
+#                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+#                 user TEXT NOT NULL UNIQUE,
+#                 token TEXT NOT NULL,
+#                 ts TEXT NOT NULL
+#             )
+#             """
+#         )
+#         c.execute(
+#             "INSERT OR IGNORE INTO fcm_tokens (user, token, ts) "
+#             "SELECT user, token, ts FROM fcm_tokens_old"
+#         )
+#         c.execute("DROP TABLE fcm_tokens_old")
+#         conn.commit()
 
-    conn.close()
+#     conn.close()
 
 
-def migrate_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("PRAGMA table_info(messages)")
-    existing = [r[1] for r in c.fetchall()]
-    for col in ("filename", "mimetype", "filedata"):
-        if col not in existing:
-            c.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT")
-    conn.commit()
-    conn.close()
+# def migrate_db():
+#     conn = sqlite3.connect(DB_PATH)
+#     c = conn.cursor()
+#     c.execute("PRAGMA table_info(messages)")
+#     existing = [r[1] for r in c.fetchall()]
+#     for col in ("filename", "mimetype", "filedata"):
+#         if col not in existing:
+#             c.execute(f"ALTER TABLE messages ADD COLUMN {col} TEXT")
+#     conn.commit()
+#     conn.close()
 
 
 def count_messages():
