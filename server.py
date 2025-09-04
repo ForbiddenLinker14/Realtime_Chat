@@ -561,7 +561,6 @@ async def disconnect(sid):
 @app.on_event("startup")
 async def startup_tasks():
     init_db()
-    migrate_db()
 
     global FCM_TOKENS
     FCM_TOKENS = load_fcm_tokens()
@@ -865,8 +864,16 @@ async def register_fcm(request: Request):
         return JSONResponse({"error": "user + token required"}, status_code=400)
 
     save_fcm_token(user, token)
-    FCM_TOKENS[user] = token
-    print(f"✅ FCM token saved for {user} (persisted in DB)")
+
+    # ensure always list
+    if user not in FCM_TOKENS:
+        FCM_TOKENS[user] = []
+    if token not in FCM_TOKENS[user]:
+        FCM_TOKENS[user].append(token)
+
+    print(
+        f"✅ FCM token saved for {user} (persisted in DB, total={len(FCM_TOKENS[user])})"
+    )
     return {"status": "ok"}
 
 
