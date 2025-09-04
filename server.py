@@ -692,11 +692,23 @@ async def unsubscribe(request: Request):
             {"error": "sender, room, and subscription required"}, status_code=400
         )
 
-    subs_for_room = subscriptions.get(room, {}).get(sender, [])
+    # check if room exists in subscriptions
+    if room not in subscriptions or sender not in subscriptions[room]:
+        return {"message": f"No subscription found for {sender} in room {room}"}
+
+    subs_for_room = subscriptions[room][sender]
     endpoint = subscription.get("endpoint")
 
     new_list = [s for s in subs_for_room if s.get("endpoint") != endpoint]
     subscriptions[room][sender] = new_list
+
+    # cleanup: if sender has no subs left, remove sender key
+    if not subscriptions[room][sender]:
+        del subscriptions[room][sender]
+
+    # cleanup: if room has no subs left, remove room key
+    if not subscriptions[room]:
+        del subscriptions[room]
 
     print(f"🛑 Unsubscribed {sender} from room {room}")
     return {"message": f"Unsubscribed {sender} from {room}"}
