@@ -1,34 +1,25 @@
 <!-- ওঁ নমো 
-সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ 
--->
+
+সিদ্ধিদাতা গণেশায় নমঃ                        সিদ্ধিদাতা গণেশায় নমঃ                                   সিদ্ধিদাতা গণেশায় নমঃ -->
 
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
-  <!-- Google Ads -->
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7006477250957433"
     crossorigin="anonymous"></script>
-
-  <!-- SEO / Meta -->
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, height=device-height" />
   <meta name="google-site-verification" content="lvrePtNXjs6Q-t-SX8DeUld6iPEPqAFfLrUTcY_U2o4" />
+  <link rel="icon" href="/icons/favicon.ico" type="image/png">
+  <meta charset="utf-8" />
+  <link rel="manifest" href="/manifest.json">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, height=device-height" />
+  <title>💬 Realtime Chat</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#000000">
 
-  <!-- Favicon & Manifest -->
-  <link rel="icon" href="/icons/favicon.ico" type="image/png">
-  <link rel="manifest" href="/manifest.json">
-
-  <title>💬 Realtime Chat</title>
-
-  <!-- Socket.IO -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
-  <!-- Styles -->
   <style>
     html,
     body {
@@ -535,19 +526,22 @@
 </head>
 
 <body>
-  <!-- Sidebar -->
   <div id="show-arrow" onclick="toggleSidebar()">»</div>
+
   <div id="sidebar">
     <div id="toggle-arrow" onclick="toggleSidebar()">«</div>
-    <h2 id="chat-title" class="chat-title">💬 Realtime Chat</h2>
+    <h2 id="chat-title" class="chat-title" style="font-size:1.2em; cursor:pointer;">💬 Realtime Chat</h2>
 
     <label>Your Name:</label>
     <input id="name" type="text" placeholder="e.g. Anit" />
-
     <label>Room ID:</label>
+
+    <!-- Ad just above input -->
     <ins class="adsbygoogle" style="display:block; margin:15px auto;" data-ad-client="ca-pub-7006477250957433"
       data-ad-slot="7006477250957433" data-ad-format="auto" data-full-width-responsive="true"></ins>
-    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+    <script>
+      (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
 
     <input id="room" type="text" placeholder="e.g. project-123" />
     <button onclick="joinRoom()" style="width:100%;">Enter</button>
@@ -564,32 +558,62 @@
   <!-- Intro Section -->
   <div id="intro"
     style="padding:20px; background:#100e09; color:#eaeaea; max-width:1000px; margin:auto; line-height:1.6; text-align:center;">
+
     <header style="background:#1a1812; padding:20px; border-bottom:1px solid #333;">
-      <h1 style="color:#25d366; margin:0;">Welcome to RealTime Chat – Connect Instantly With Friends</h1>
+      <h1 style="color:#25d366; margin:0; text-align:center;">
+        Welcome to RealTime Chat – Connect Instantly With Friends
+      </h1>
     </header>
 
-    <p><strong>RealTime Chat</strong> is a fast, secure, and easy-to-use chat platform where you can connect instantly
-      with friends, family, or team.</p>
-    <p>Unlike traditional messaging apps, RealTime Chat runs directly in your browser, with no downloads required. Just
-      enter your name, pick a room, and start chatting instantly!</p>
+    <p>
+      <strong>RealTime Chat</strong> is a fast, secure, and easy-to-use chat platform
+      where you can connect with your friends, family, or team instantly.
+      Whether you’re on desktop or mobile, our chat app keeps you connected anytime, anywhere.
+    </p>
 
+    <p>
+      Unlike traditional messaging apps, RealTime Chat runs directly in your browser,
+      with no downloads required. Just enter your name, pick a room, and start chatting instantly!
+    </p>
+
+    <!-- blog2 -->
     <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-7006477250957433" data-ad-slot="9197511706"
       data-ad-format="auto" data-full-width-responsive="true"></ins>
-    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+    <script>
+      (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
 
-    <p>Our mission is to make communication simple, private, and accessible to everyone. With RealTime Chat, you don’t
-      need complicated sign-ups or heavy apps. Everything works instantly in your browser.</p>
-    <p>We believe in <strong>privacy-first communication</strong>. Unlike many messaging apps, RealTime Chat respects
-      your privacy. Chats remain secure and are never shared with third parties.</p>
-    <p>Our platform is <strong>constantly evolving</strong>. Features like media sharing, chat themes, and moderation
-      tools are coming soon.</p>
+    <p>
+      Our mission is to make communication simple, private, and accessible to everyone.
+      With RealTime Chat, you don’t need to worry about complicated sign-ups, long installation
+      processes, or heavy apps that slow down your device. Everything works instantly in your
+      browser, making it lightweight and efficient. Whether you’re managing a study group,
+      catching up with family, or collaborating with your team, RealTime Chat is built to keep
+      conversations flowing smoothly.
+    </p>
 
-    <!-- Features / Why / FAQ -->
+    <p>
+      We believe in <strong>privacy-first communication</strong>. Unlike many messaging apps that
+      collect user data, RealTime Chat respects your privacy. Your chats remain secure and are
+      never shared with third parties. This makes our platform a safe space for casual users,
+      professionals, and communities who value private and distraction-free conversations.
+    </p>
+
+    <p>
+      Our platform is also <strong>constantly evolving</strong>. We are working on adding more
+      features such as media sharing, customizable chat themes, and enhanced moderation tools
+      for group conversations. By choosing RealTime Chat today, you’re joining a growing
+      community that values fast, private, and reliable communication.
+    </p>
+
+    <!-- Three-column layout -->
     <div
       style="display:flex; justify-content:space-between; gap:20px; margin-top:20px; text-align:left; flex-wrap:wrap;">
+
+      <!-- Features -->
       <div style="flex:1; min-width:220px;">
-        <h2 style="color:#25d366;">✨ Features</h2>
-        <ul style="list-style:none; padding:0; margin:0;">
+        <h2 style="color:#25d366; margin:0 0 5px 0; font-size:1.3em;">✨ Features</h2>
+        <ul style="list-style:none; padding-left:0; margin:0; font-size:0.95em;">
           <li>✅ Instant real-time messaging</li>
           <li>✅ Private and group chats</li>
           <li>✅ Simple and clean interface</li>
@@ -597,41 +621,50 @@
         </ul>
       </div>
 
+      <!-- Why Choose Us -->
       <div style="flex:1; min-width:220px;">
-        <h2 style="color:#25d366;">💡 Why Choose Us?</h2>
-        <p>Unlike other apps, <strong>RealTime Chat</strong> doesn’t require sign-ups or downloads. It’s lightweight,
-          privacy-friendly, and works in any browser.</p>
+        <h2 style="color:#25d366; margin:0 0 8px 0; font-size:1.3em;">💡 Why Choose Us?</h2>
+        <p style="margin:0; font-size:0.95em;">
+          Unlike other chat apps, <strong>RealTime Chat</strong> doesn’t require sign-ups or downloads.
+          It’s lightweight, privacy-friendly, and always available in your browser.
+        </p>
       </div>
 
-      <div style="flex:1; min-width:200px;">
-        <h2 style="color:#25d366;">📌 FAQ</h2>
-        <ul>
-          <li><strong>Is it free?</strong> Yes.</li>
-          <li><strong>Is it safe?</strong> Yes, chats stay private.</li>
-          <li><strong>On mobile?</strong> Works on all devices.</li>
-          <li><strong>Need download?</strong> No, browser-based.</li>
+      <!-- FAQ -->
+      <div style="flex:1; min-width:200px; font-size:0.867em;">
+        <h2 style="color:#25d366; margin:0 0 5px 0; font-size:1.2em;">📌 FAQ</h2>
+        <ul style="list-style:disc; padding-left:18px; margin:0;">
+          <li><strong>Is it free?</strong> Yes, 100% free.</li>
+          <li><strong>Is it safe?</strong> All chats stay private.</li>
+          <li><strong>On mobile?</strong> Yes, works on all devices.</li>
+          <li><strong>Need download?</strong> No, works directly in browser.</li>
         </ul>
       </div>
     </div>
-
-    <!-- Footer -->
-    <footer
-      style="margin-top:30px; padding:15px; background:#1a1812; color:#aaa; text-align:center; font-size:0.9em; border-top:1px solid #333;">
+    <!-- Footer Section -->
+    <footer style="margin-top:30px; padding:15px; background:#1a1812; color:#aaa; 
+  text-align:center; font-size:0.9em; border-top:1px solid #333; width:100%; box-sizing:border-box;">
       <div style="max-width:900px; margin:0 auto;">
         <p>
-          <a href="/about.html" style="color:#25d366;">About</a> |
-          <a href="/privacy-policy.html" style="color:#25d366;">Privacy Policy</a> |
-          <a href="/terms-of-service.html" style="color:#25d366;">Terms</a> |
-          <a href="/disclaimer.html" style="color:#25d366;">Disclaimer</a> |
-          <a href="/blog.html" style="color:#25d366;">Blog</a> |
-          <a href="/contact.html" style="color:#25d366;">Contact</a>
+          <a href="/about.html" style="color:#25d366; text-decoration:none; margin:0 15px;">About</a> |
+          <a href="/privacy-policy.html" style="color:#25d366; text-decoration:none; margin:0 15px;">Privacy
+            Policy</a> |
+          <a href="/terms-of-service.html" style="color:#25d366; text-decoration:none; margin:0 15px;">Terms of
+            Service</a>|
+          <a href="/disclaimer.html" style="color:#25d366; text-decoration:none; margin:0 15px;">Disclaimer</a>
+          |
+          <a href="/blog.html" style="color:#25d366; text-decoration:none; margin:0 15px;">Blog</a>
+          |
+          <a href="/contact.html" style="color:#25d366; text-decoration:none; margin:0 15px;">Contact</a>
         </p>
-        <p style="margin-top:8px; font-size:0.8em; color:#777;">© 2025 RealTime Chat. All rights reserved.</p>
+        <p style="margin-top:8px; font-size:0.8em; color:#777;">
+          © 2025 RealTime Chat. All rights reserved.
+        </p>
       </div>
     </footer>
+
   </div>
 
-  <!-- Chat Section -->
   <div id="chat-container">
     <div id="messages"></div>
     <div id="input-area">
@@ -641,6 +674,7 @@
       <button id="send" type="button" disabled>Send</button>
     </div>
   </div>
+
 
   <script>
     // =============== Storage Utility ===============
@@ -662,123 +696,44 @@
       }
     };
 
-    // =============== Config & Detection ===============
-    const API_BASE = "https://realtime-chat-1mv3.onrender.com";
-    const VAPID_PUBLIC_KEY = "BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw";
+    // =============== Web Push Notifications (VAPID) ===============
+    const VAPID_PUBLIC_KEY = 'BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw';
 
-    const isCapacitor = !!window.Capacitor;
-    const isWebPushSupported = "serviceWorker" in navigator && "PushManager" in window;
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = atob(base64);
+      return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+    }
 
-    // =============== Web Push (browser only) ===============
-    if (isWebPushSupported && !isCapacitor) {
-      async function requestNotificationPermission() {
-        let perm = await Notification.requestPermission();
-        console.log("📌 Notification permission:", perm);
-        return perm === "granted";
+    async function subscribeUser(sender) {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        console.log("📌 New subscription created:", JSON.stringify(subscription));
+      } else {
+        console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
       }
 
-      window.addEventListener("load", async () => {
-        const granted = await requestNotificationPermission();
-        if (granted) {
-          console.log("✅ Notifications allowed");
-        } else {
-          console.warn("⚠️ Notifications blocked by user");
-        }
+      localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
+
+      const body = { sender: sender || "anonymous", subscription: subscription.toJSON() };
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
       });
-    }
 
-    if (isWebPushSupported && !isCapacitor) {
-      function urlBase64ToUint8Array(base64String) {
-        const padding = "=".repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-        const rawData = atob(base64);
-        return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
-      }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "subscribe failed");
 
-      async function subscribeUser(sender) {
-        const registration = await navigator.serviceWorker.ready;
-        let subscription = await registration.pushManager.getSubscription();
-
-        if (!subscription) {
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-          });
-          console.log("📌 New subscription created:", JSON.stringify(subscription));
-        } else {
-          console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
-        }
-
-        localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
-
-        const body = { sender: sender || "anonymous", subscription: subscription.toJSON() };
-        const response = await fetch(`${API_BASE}/api/subscribe`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result?.error || "subscribe failed");
-        console.log("✅ Backend response:", result.message);
-        return subscription;
-      }
-
-      navigator.serviceWorker.register("/sw.js")
-        .then(() => console.log("✅ Service Worker registered for Web Push"))
-        .catch(err => console.error("❌ SW registration failed:", err));
-    }
-
-    // =============== Android Push (Capacitor only) ===============
-    if (isCapacitor && Capacitor.Plugins?.PushNotifications) {
-      const { PushNotifications } = Capacitor.Plugins;
-
-      (async () => {
-        let permStatus = await PushNotifications.requestPermissions();
-        console.log("📌 Permission:", permStatus);
-
-        if (permStatus.receive === "granted") {
-          await PushNotifications.register();
-        }
-
-        PushNotifications.addListener("registration", async (token) => {
-          console.log("📱 Push registration token:", token.value);
-          try {
-            await fetch(`${API_BASE}/api/register-fcm`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                token: token.value,
-                user: Storage.get("chat_name") || "guest"
-              })
-            });
-            console.log("📡 Token sent to backend");
-          } catch (err) {
-            console.error("❌ Failed to send token:", err);
-          }
-        });
-
-        PushNotifications.addListener("registrationError", (err) => {
-          console.error("❌ Registration error:", err.error);
-        });
-
-        PushNotifications.addListener("pushNotificationReceived", (notification) => {
-          console.log("📩 Push received:", notification);
-        });
-
-        PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
-          console.log("👉 Notification tapped:", action.notification);
-        });
-
-        window.clearNotifications = async () => {
-          try {
-            await PushNotifications.removeAllDeliveredNotifications();
-            console.log("🧹 All notifications cleared");
-          } catch (err) {
-            console.error("❌ Failed to clear notifications:", err);
-          }
-        };
-      })();
+      console.log("✅ Backend response:", result.message);
+      return subscription;
     }
 
     // =============== Chat Application State ===============
@@ -791,20 +746,12 @@
     // =============== Utility Functions ===============
     function escapeHtml(s) {
       return (s ?? "").replace(/[&<>"']/g, c =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
       );
     }
-    function escapeAttr(s) {
-      return escapeHtml(s).replace(/"/g, "&quot;");
-    }
-    function bumpTs(ts) {
-      if (ts && (!lastPersistedTs || ts > lastPersistedTs)) {
-        lastPersistedTs = ts;
-      }
-    }
-    function sendActive(active) {
-      if (socket) socket.emit("status", { active });
-    }
+    function escapeAttr(s) { return escapeHtml(s).replace(/"/g, '&quot;'); }
+    function bumpTs(ts) { if (ts && (!lastPersistedTs || ts > lastPersistedTs)) lastPersistedTs = ts; }
+    function sendActive(active) { if (socket) socket.emit('status', { active }); }
 
     // =============== UI Functions ===============
     function toggleSidebar() {
@@ -823,29 +770,16 @@
     function joinRoom() {
       currentName = document.getElementById("name").value.trim();
       currentRoom = document.getElementById("room").value.trim();
-
-      if (!currentName || !currentRoom) {
-        alert("Enter name and room first!");
-        return;
-      }
-      if (joinedRooms.has(currentRoom)) {
-        alert(`You are already in room "${currentRoom}"!`);
-        return;
-      }
+      if (!currentName || !currentRoom) { alert("Enter name and room first!"); return; }
+      if (joinedRooms.has(currentRoom)) { alert(`You are already in room "${currentRoom}"!`); return; }
 
       Storage.set("chat_name", currentName);
       Storage.set("chat_room", currentRoom);
-
-      // Ensure push notifications registered
-      if (isWebPushSupported && !isCapacitor) {
-        subscribeUser(currentName).catch(err => console.error("❌ WebPush subscription failed:", err));
-      }
 
       document.getElementById("chat-container").style.display = "flex";
       document.getElementById("input-area").style.display = "flex";
       document.getElementById("intro").style.display = "none";
       document.getElementById("messages").style.display = "block";
-
       document.getElementById("messages").innerHTML = "";
       lastPersistedTs = null;
       alreadyFetchingHistory = false;
@@ -854,22 +788,13 @@
       document.getElementById("attach").disabled = false;
       document.getElementById("user-list").innerHTML = "";
 
-      if (socket) {
-        socket.off();
-        socket.disconnect();
-      }
-
-      socket = io(API_BASE, { path: "/socket.io", transports: ["websocket"] });
+      if (socket) { socket.off(); socket.disconnect(); }
+      socket = io("https://realtime-chat-1mv3.onrender.com", { path: "/socket.io", transports: ["websocket"] });
 
       function safeJoinWithRetry(attempt = 1) {
         if (!socket || !socket.connected) return;
         if (joinedRooms.has(currentRoom)) return;
-
-        socket.emit("join", {
-          room: currentRoom,
-          sender: currentName,
-          lastTs: lastPersistedTs || null
-        }, ack => {
+        socket.emit("join", { room: currentRoom, sender: currentName, lastTs: lastPersistedTs || null }, ack => {
           if (ack && ack.success) {
             console.log("✅ Joined room:", currentRoom);
             joinedRooms.add(currentRoom);
@@ -882,9 +807,7 @@
       }
 
       socket.on("users_update", updateUserList);
-      socket.on("left_room", data => {
-        if (data.room === currentRoom) document.getElementById("user-list").innerHTML = "";
-      });
+      socket.on("left_room", d => { if (d.room === currentRoom) document.getElementById("user-list").innerHTML = ""; });
       socket.on("room_destroyed", handleRoomDestroyed);
       socket.on("clear", handleRoomCleared);
       socket.on("connect", () => safeJoinWithRetry());
@@ -892,16 +815,8 @@
       socket.on("file", addFileMessage);
 
       document.getElementById("send").onclick = sendMessage;
-      document.getElementById("input").onkeydown = e => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
-      };
-      document.getElementById("attach").onclick = e => {
-        e.preventDefault();
-        document.getElementById("fileInput").click();
-      };
+      document.getElementById("input").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } };
+      document.getElementById("attach").onclick = e => { e.preventDefault(); document.getElementById("fileInput").click(); };
       document.getElementById("fileInput").onchange = handleFileUpload;
     }
 
@@ -913,18 +828,10 @@
 
       sending = true;
       document.getElementById("send").disabled = true;
-
       let sub = null;
-      try {
-        const savedSub = localStorage.getItem("pushSub");
-        sub = savedSub ? JSON.parse(savedSub) : null;
-      } catch (err) {
-        console.warn("⚠️ Subscription failed:", err);
-      }
-
+      try { const savedSub = localStorage.getItem("pushSub"); sub = savedSub ? JSON.parse(savedSub) : null; } catch { }
       socket.emit("message", { room: currentRoom, sender: currentName, text, subscription: sub }, () => {
-        sending = false;
-        document.getElementById("send").disabled = false;
+        sending = false; document.getElementById("send").disabled = false;
       });
       inputEl.value = "";
     }
@@ -933,13 +840,11 @@
       const messages = document.getElementById("messages");
       const last = messages.lastElementChild;
       if (data.sender === "System" && last && last.textContent === data.text) return;
-      if (!currentRoom && data.sender === "System" &&
-        /joined/i.test(data.text) && data.text.includes(currentName)) return;
+      if (!currentRoom && data.sender === "System" && /joined/i.test(data.text) && data.text.includes(currentName)) return;
 
       const div = document.createElement("div");
       if (data.sender === "System") {
-        div.className = "msg system";
-        div.textContent = data.text;
+        div.className = "msg system"; div.textContent = data.text;
       } else {
         bumpTs(data.ts);
         const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
@@ -948,7 +853,7 @@
         div.innerHTML = `<strong>${data.sender}</strong><br>${escapeHtml(data.text)}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
       }
       messages.appendChild(div);
-      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
     }
 
     function addFileMessage(data) {
@@ -957,15 +862,12 @@
       const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
       div.className = "msg " + (isMe ? "me" : "other");
       div.dataset.ts = data.ts;
-
       if (data.mimetype && data.mimetype.startsWith("image/")) {
         div.innerHTML = `
         <div class="username"><strong>${data.sender}</strong></div>
         <div class="image-wrapper">
           <a href="${data.data}" download="${data.filename}" class="download-icon" title="Download">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24">
-              <path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/>
-            </svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24"><path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/></svg>
           </a>
           <img src="${data.data}" alt="${escapeAttr(data.filename)}">
         </div>
@@ -973,77 +875,47 @@
       } else {
         div.innerHTML = `
         <div class="username"><strong>${data.sender}</strong></div>
-        <a href="${data.data}" download="${escapeAttr(data.filename)}" class="download-link">📎 ${escapeHtml(data.filename || "file")}</a><br>
+        <a href="${data.data}" download="${escapeAttr(data.filename)}" class="download-link">📎 ${escapeHtml(data.filename || 'file')}</a><br>
         <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
       }
-
       const messages = document.getElementById("messages");
       messages.appendChild(div);
-      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+      messages.scrollTo({ top: messages.scrollHeight, behavior: 'smooth' });
     }
 
     function handleFileUpload() {
       const file = document.getElementById("fileInput").files[0];
       if (!file || !currentRoom) return;
       const reader = new FileReader();
-      reader.onload = () => {
-        socket.emit("file", {
-          room: currentRoom,
-          sender: currentName,
-          filename: file.name,
-          mimetype: file.type,
-          data: reader.result
-        });
-      };
+      reader.onload = () => { socket.emit("file", { room: currentRoom, sender: currentName, filename: file.name, mimetype: file.type, data: reader.result }); };
       reader.readAsDataURL(file);
     }
 
     function updateUserList(data) {
       if (!currentRoom || data.room !== currentRoom) return;
       const list = document.getElementById("user-list");
-      const seen = new Set();
-      const existing = new Map();
-
-      list.querySelectorAll("li").forEach(li =>
-        existing.set(li.getAttribute("data-name"), li)
-      );
-
+      const seen = new Set(); const existing = new Map();
+      list.querySelectorAll("li").forEach(li => existing.set(li.getAttribute("data-name"), li));
       data.users.forEach(u => {
-        if (seen.has(u.name)) return;
-        seen.add(u.name);
+        if (seen.has(u.name)) return; seen.add(u.name);
         const color = u.status === "online" ? "#25d366" : "red";
         const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
-
         let li = existing.get(u.name);
-        if (li) {
-          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-          existing.delete(u.name);
-        } else {
-          li = document.createElement("li");
-          li.setAttribute("data-name", u.name);
-          li.className = "fade-in";
-          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-          list.appendChild(li);
+        if (li) { li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`; existing.delete(u.name); }
+        else {
+          li = document.createElement("li"); li.setAttribute("data-name", u.name); li.className = "fade-in";
+          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`; list.appendChild(li);
         }
       });
-
-      existing.forEach(li => {
-        li.classList.add("fade-out");
-        setTimeout(() => li.remove(), 300);
-      });
+      existing.forEach(li => { li.classList.add("fade-out"); setTimeout(() => li.remove(), 300); });
     }
 
     function handleRoomDestroyed(data) {
       if (currentRoom === data.room) {
-        document.getElementById("input").disabled = true;
-        document.getElementById("send").disabled = true;
-        document.getElementById("attach").disabled = true;
+        document.getElementById("input").disabled = true; document.getElementById("send").disabled = true; document.getElementById("attach").disabled = true;
         addMessage({ sender: "System", text: "Room destroyed. You cannot send messages until you join a new room.", ts: new Date().toISOString() });
-        lastPersistedTs = null;
-        joinedRooms.delete(data.room);
-        currentRoom = "";
-        Storage.remove("chat_name");
-        Storage.remove("chat_room");
+        lastPersistedTs = null; joinedRooms.delete(data.room); currentRoom = "";
+        Storage.remove("chat_name"); Storage.remove("chat_room");
         document.getElementById("user-list").innerHTML = "";
         document.getElementById("chat-container").style.display = "none";
         document.getElementById("input-area").style.display = "none";
@@ -1060,71 +932,49 @@
       }
     }
 
-    // =============== Clear & Destroy API Calls ===============
+    const API_BASE = "https://realtime-chat-1mv3.onrender.com";
     window.clearRoom = async function clearRoom() {
       if (!currentRoom) { alert("Join a room first!"); return; }
       try {
-        const res = await fetch(`${API_BASE}/clear/${encodeURIComponent(currentRoom)}`, {
-          method: "DELETE", headers: { "Content-Type": "application/json" }, cache: "no-store"
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `Failed to clear room: ${res.status}`);
-        console.log("✅", data.message);
-        addMessage({ sender: "System", text: data.message, ts: new Date().toISOString() });
-      } catch (err) {
-        console.error("❌ clearRoom error:", err);
-        alert(err.message);
-      }
+        const res = await fetch(`${API_BASE}/clear/${encodeURIComponent(currentRoom)}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, cache: "no-store" });
+        const data = await res.json(); if (!res.ok) throw new Error(data?.error || `Failed to clear room: ${res.status}`);
+        console.log("✅", data.message); addMessage({ sender: "System", text: data.message, ts: new Date().toISOString() });
+      } catch (err) { console.error("❌ clearRoom error:", err); alert(err.message); }
     };
 
     window.destroyRoom = async function destroyRoom() {
       if (!currentRoom) { alert("Join a room first!"); return; }
       if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
       try {
-        const res = await fetch(`${API_BASE}/destroy/${encodeURIComponent(currentRoom)}`, {
-          method: "DELETE", headers: { "Content-Type": "application/json" }
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `Failed to destroy room: ${res.status}`);
+        const res = await fetch(`${API_BASE}/destroy/${encodeURIComponent(currentRoom)}`, { method: "DELETE", headers: { "Content-Type": "application/json" } });
+        const data = await res.json(); if (!res.ok) throw new Error(data?.error || `Failed to destroy room: ${res.status}`);
         console.log("✅", data.message);
         document.getElementById("messages").innerHTML = "";
         addMessage({ sender: "System", text: "Room destroyed. All messages cleared. Please join a new room.", ts: new Date().toISOString() });
-        lastPersistedTs = null;
-        Storage.remove("chat_name");
-        Storage.remove("chat_room");
-        joinedRooms.delete(currentRoom);
-        currentRoom = "";
+        lastPersistedTs = null; Storage.remove("chat_name"); Storage.remove("chat_room"); joinedRooms.delete(currentRoom); currentRoom = "";
         document.getElementById("user-list").innerHTML = "";
-        document.getElementById("chat-container").style.display = "none";
-        document.getElementById("input-area").style.display = "none";
-        document.getElementById("intro").style.display = "block";
-        document.getElementById("messages").style.display = "none";
-      } catch (err) {
-        console.error("❌ destroyRoom error:", err);
-        alert(err.message);
-      }
+        document.getElementById("chat-container").style.display = "none"; document.getElementById("input-area").style.display = "none";
+        document.getElementById("intro").style.display = "block"; document.getElementById("messages").style.display = "none";
+      } catch (err) { console.error("❌ destroyRoom error:", err); alert(err.message); }
     };
 
     function leaveRoom() {
-      if (!currentRoom) { alert("Join a room first!"); return; }
-      if (socket) socket.emit("leave", { room: currentRoom, sender: currentName });
-      joinedRooms.delete(currentRoom);
-      currentRoom = "";
-      document.getElementById("chat-container").style.display = "none";
-      document.getElementById("input-area").style.display = "none";
-      document.getElementById("messages").style.display = "none";
-      document.getElementById("intro").style.display = "block";
+      if (!currentRoom) { alert("You are not in a room!"); return; }
+      const leftRoom = currentRoom;
+      socket.emit("leave", { room: currentRoom, sender: currentName });
+      document.getElementById("input").disabled = true; document.getElementById("send").disabled = true; document.getElementById("attach").disabled = true;
+      addMessage({ sender: "System", text: `YOU LEFT FROM ROOM ${leftRoom}`, ts: new Date().toISOString() });
+      lastPersistedTs = null; joinedRooms.delete(currentRoom); currentRoom = "";
+      Storage.remove("chat_name"); Storage.remove("chat_room");
+      document.getElementById("user-list").innerHTML = "";
+      document.getElementById("chat-container").style.display = "block"; document.getElementById("input-area").style.display = "none"; document.getElementById("messages").style.display = "block";
     }
 
     // =============== Event Listeners ===============
-    document.addEventListener("visibilitychange", () => sendActive(!document.hidden));
-    window.addEventListener("focus", () => sendActive(true));
-    window.addEventListener("blur", () => sendActive(false));
-
-    window.addEventListener("offline", () => {
-      if (socket && socket.connected) socket.disconnect();
-    });
-
+    document.addEventListener('visibilitychange', () => sendActive(!document.hidden));
+    window.addEventListener('focus', () => sendActive(true));
+    window.addEventListener('blur', () => sendActive(false));
+    window.addEventListener("offline", () => { if (socket && socket.connected) socket.disconnect(); });
     let reconnectTimer;
     window.addEventListener("online", () => {
       clearTimeout(reconnectTimer);
@@ -1143,7 +993,7 @@
       if (savedName && savedRoom) {
         document.getElementById("name").value = savedName;
         document.getElementById("room").value = savedRoom;
-        joinRoom();
+        joinRoom({ preserveMessages: true });
       } else {
         document.getElementById("intro").style.display = "block";
       }
