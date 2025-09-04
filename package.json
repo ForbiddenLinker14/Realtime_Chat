@@ -1,0 +1,27 @@
+{
+  "name": "realtime-chat",
+  "version": "1.0.0",
+  "description": "Realtime Chat",
+  "main": "sw.js",
+  "scripts": {
+    "build": "rmdir /s /q dist && xcopy www dist /E /I",
+    "clean": "rmdir /s /q dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ForbiddenLinker14/Realtime_Chat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ForbiddenLinker14/Realtime_Chat/issues"
+  },
+  "homepage": "https://github.com/ForbiddenLinker14/Realtime_Chat#readme",
+  "dependencies": {
+    "@capacitor/android": "^7.4.3",
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/push-notifications": "^7.0.2"
+  }
+}
