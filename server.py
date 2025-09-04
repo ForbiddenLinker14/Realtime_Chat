@@ -234,13 +234,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*",
-        "http://localhost",
-        "https://localhost",
-    ],  # allow all or restrict
+    allow_origins=["*"],  # or your domain
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],  # important: includes DELETE
     allow_headers=["*"],
 )
 
