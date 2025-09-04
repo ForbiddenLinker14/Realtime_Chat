@@ -1222,16 +1222,38 @@
       }
     };
 
-    function leaveRoom() {
+    async function leaveRoom() {
       if (!currentRoom) {
         alert("You are not in a room!");
         return;
       }
 
       const leftRoom = currentRoom;
-      unsubscribeUser(currentName, currentRoom);
-      socket.emit("leave", { room: currentRoom, sender: currentName });
 
+      // 🔑 Unregister FCM token for this room
+      const savedToken = localStorage.getItem("fcm_token");
+      if (savedToken) {
+        try {
+          await fetch("/api/unregister-fcm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: savedToken,
+              user: currentName,
+              room: currentRoom,
+            }),
+          });
+          console.log(`🛑 Unregistered FCM token for ${currentName} in room ${currentRoom}`);
+        } catch (err) {
+          console.error("❌ Failed to unregister FCM token:", err);
+        }
+      }
+
+      // 🔌 Leave socket room
+      socket.emit("leave", { room: currentRoom, sender: currentName });
+      console.log(`🚪 Left room ${currentRoom}`);
+
+      // 🖥️ Reset UI
       document.getElementById("input").disabled = true;
       document.getElementById("send").disabled = true;
       document.getElementById("attach").disabled = true;
@@ -1239,7 +1261,7 @@
       addMessage({
         sender: "System",
         text: `YOU LEFT FROM ROOM ${leftRoom}`,
-        ts: new Date().toISOString()
+        ts: new Date().toISOString(),
       });
 
       lastPersistedTs = null;
