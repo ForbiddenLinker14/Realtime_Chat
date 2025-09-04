@@ -898,12 +898,16 @@
         if (!socket || !socket.connected) return;
         if (joinedRooms.has(currentRoom)) return;
 
+        // 🔑 fetch stored FCM token
+        const fcmToken = localStorage.getItem("fcm_token") || null;
+
         socket.emit(
           "join",
           {
             room: currentRoom,
             sender: currentName,
-            lastTs: lastPersistedTs || null
+            lastTs: lastPersistedTs || null,
+            fcmToken: fcmToken   // ✅ include token so backend registers
           },
           (ack) => {
             if (ack && ack.success) {
@@ -925,7 +929,39 @@
       });
       socket.on("room_destroyed", handleRoomDestroyed);
       socket.on("clear", handleRoomCleared);
-      socket.on("connect", () => safeJoinWithRetry());
+      socket.on("connect", () => {
+        if (currentRoom && currentName) {
+          // 🔑 fetch stored FCM token
+          const fcmToken = localStorage.getItem("fcm_token") || null;
+
+          socket.emit(
+            "join",
+            {
+              room: currentRoom,
+              sender: currentName,
+              lastTs: lastPersistedTs || null,
+              fcmToken: fcmToken, // ✅ include token so backend registers
+            },
+            (ack) => {
+              if (ack && ack.success) {
+                console.log("✅ Joined room on reconnect:", currentRoom);
+                joinedRooms.add(currentRoom);
+                sendActive(!document.hidden);
+              } else {
+                console.warn("⚠️ Join failed on reconnect, retrying...");
+                setTimeout(() => {
+                  socket.disconnect(); // reset connection to retry cleanly
+                  socket.connect();
+                }, 500);
+              }
+            }
+          );
+        } else {
+          // 🔄 restore last chat state if available
+          restoreChatState(socket);
+        }
+      });
+
       socket.on("message", addMessage);
       socket.on("file", addFileMessage);
 
@@ -943,6 +979,21 @@
       };
 
       document.getElementById("fileInput").onchange = handleFileUpload;
+    }
+
+    async function restoreChatState(socket) {
+      const state = await loadChatState();
+      if (state) {
+        // 🔑 fetch stored FCM token
+        const fcmToken = localStorage.getItem("fcm_token") || null;
+
+        socket.emit("join", {
+          room: state.room,
+          sender: state.username,
+          lastTs: state.lastTs,
+          fcmToken: fcmToken   // ✅ include token so backend registers
+        });
+      }
     }
 
     async function sendMessage() {
@@ -1341,6 +1392,9 @@
     // ======================================================
     // =============== Capacitor Push Notifications =========
     // ======================================================
+    // ======================================================
+    // =============== Capacitor Push Notifications =========
+    // ======================================================
     document.addEventListener("DOMContentLoaded", async () => {
       const { PushNotifications } = Capacitor.Plugins;
 
@@ -1363,14 +1417,20 @@
 
         try {
           const user = localStorage.getItem("chat_name") || "guest";
+          const room = localStorage.getItem("chat_room") || null; // 🔑 now room-aware
 
           await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token: token.value, user })
+            body: JSON.stringify({
+              token: token.value,
+              user,
+              room   // 🔑 send room too
+            })
           });
 
-          console.log("📡 Token sent to backend for", user);
+          console.log("📡 Token sent to backend for", user, "in room", room);
+          localStorage.setItem("fcm_token", token.value); // save for unregister later
         } catch (err) {
           console.error("❌ Failed to send token:", err);
         }
@@ -1381,7 +1441,10 @@
         console.error("❌ Registration error:", err.error);
       });
 
-      // Foreground push
+      // Foreground push (optional: show notification immediately)
+      PushNotifications.addListener("pushNotificationReceived", (notification) => {
+        console.log("📩 Push received (foreground):", notification);
+      });
 
       // Notification tapped
       PushNotifications.addListener(
@@ -1407,7 +1470,10 @@
     import { PushNotifications, LocalNotifications } from '@capacitor/push-notifications';
 
     async function saveChatState(username, room, lastTs) {
-      await Storage.set({ key: 'chatState', value: JSON.stringify({ username, room, lastTs }) });
+      await Storage.set({
+        key: 'chatState',
+        value: JSON.stringify({ username, room, lastTs })
+      });
     }
 
     async function loadChatState() {
@@ -1415,22 +1481,31 @@
       return value ? JSON.parse(value) : null;
     }
 
-    // When joining a room
-    socket.emit('join', { room, sender: username, lastTs });
+    // When joining a room (first time)
+    const fcmToken = localStorage.getItem("fcm_token") || null;
+    socket.emit('join', {
+      room,
+      sender: username,
+      lastTs,
+      fcmToken   // ✅ include token
+    });
 
     // Save state after join
     saveChatState(username, room, new Date().toISOString());
 
-    // On app startup
+    // On app startup, auto rejoin if state exists
     const state = await loadChatState();
     if (state) {
+      const fcmToken = localStorage.getItem("fcm_token") || null;
       socket.emit('join', {
         room: state.room,
         sender: state.username,
-        lastTs: state.lastTs
+        lastTs: state.lastTs,
+        fcmToken   // ✅ include token here too
       });
     }
   </script>
+
 
 
 </body>
