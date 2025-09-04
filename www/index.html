@@ -819,6 +819,11 @@
       Storage.set("chat_name", currentName);
       Storage.set("chat_room", currentRoom);
 
+      // Ensure push notifications registered
+      if (isWebPushSupported && !isCapacitor) {
+        subscribeUser(currentName).catch(err => console.error("❌ WebPush subscription failed:", err));
+      }
+
       document.getElementById("chat-container").style.display = "flex";
       document.getElementById("input-area").style.display = "flex";
       document.getElementById("intro").style.display = "none";
