@@ -804,6 +804,9 @@ async def send_push_notification():
 
 
 # ---------------- Web Push only ----------------
+from pywebpush import WebPushException
+
+
 async def send_push_to_room(room: str, sender: str, text: str):
     if room not in subscriptions:
         return
@@ -819,8 +822,8 @@ async def send_push_to_room(room: str, sender: str, text: str):
     }
     push_id = make_push_id(room, sender, text, payload["timestamp"])
 
-    for user, subs in subscriptions[room].items():
-        for sub in subs:
+    for user, subs in list(subscriptions[room].items()):
+        for sub in list(subs):
             try:
                 endpoint = normalize_endpoint(sub.get("endpoint"))
                 if not endpoint:
@@ -838,11 +841,33 @@ async def send_push_to_room(room: str, sender: str, text: str):
                     subscription_info=sub,
                     data=json.dumps(payload),
                     vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": "mailto:example@example.com"},
+                    vapid_claims={
+                        "sub": "mailto:anitsaha976@gmail.com"
+                    },  # or your domain URL
                 )
                 print(f"🌍 WebPush sent to {user} in {room}")
-            except Exception as e:
+
+            except WebPushException as e:
                 print(f"❌ WebPush failed for {user}: {e}")
+
+                # 🔑 Auto-cleanup expired/invalid subscriptions
+                if "410" in str(e) or "404" in str(e):
+                    subs_for_room = subscriptions.get(room, {}).get(user, [])
+                    subs_for_room = [
+                        s
+                        for s in subs_for_room
+                        if normalize_endpoint(s.get("endpoint"))
+                        != normalize_endpoint(sub.get("endpoint"))
+                    ]
+                    if subs_for_room:
+                        subscriptions[room][user] = subs_for_room
+                    else:
+                        del subscriptions[room][user]
+                        if not subscriptions[room]:
+                            del subscriptions[room]
+                    print(
+                        f"🗑️ Removed expired WebPush subscription for {user} in {room}"
+                    )
 
 
 async def send_fcm_to_room(room: str, sender: str, text: str):
