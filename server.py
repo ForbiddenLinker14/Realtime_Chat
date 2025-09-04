@@ -326,7 +326,13 @@ async def destroy_room(room: str):
     - Clears its DB messages
     - Removes it from memory
     - Kicks all users
+    - Clears push subscriptions
     """
+    # 0. Remove all push subscriptions for this room
+    if room in subscriptions:
+        del subscriptions[room]
+        print(f"🛑 All push subscriptions cleared for room {room}")
+
     # 1. Clear DB
     clear_room(room)
 
@@ -353,7 +359,12 @@ async def destroy_room(room: str):
             await sio.leave_room(sid, room, namespace=namespace)
 
     print(f"💥 Room {room} destroyed.")
-    return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
+    return JSONResponse(
+        {
+            "status": "ok",
+            "message": f"Room {room} destroyed and all subscriptions cleared",
+        }
+    )
 
 
 # ---------------- Socket.IO Events ----------------
@@ -667,6 +678,28 @@ async def subscribe(request: Request):
         subs.append(subscription)
     print(f"✅ Subscription saved for {sender} (total={len(subs)})")
     return {"message": f"Subscribed {sender}", "vapidPublicKey": VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/unsubscribe")
+async def unsubscribe(request: Request):
+    body = await request.json()
+    sender = body.get("sender")
+    room = body.get("room")
+    subscription = body.get("subscription")
+
+    if not sender or not room or not subscription:
+        return JSONResponse(
+            {"error": "sender, room, and subscription required"}, status_code=400
+        )
+
+    subs_for_room = subscriptions.get(room, {}).get(sender, [])
+    endpoint = subscription.get("endpoint")
+
+    new_list = [s for s in subs_for_room if s.get("endpoint") != endpoint]
+    subscriptions[room][sender] = new_list
+
+    print(f"🛑 Unsubscribed {sender} from room {room}")
+    return {"message": f"Unsubscribed {sender} from {room}"}
 
 
 # @app.post("/send-push-notification")
