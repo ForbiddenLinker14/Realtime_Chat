@@ -34,6 +34,15 @@ PUSH_RECENT = {}  # endpoint -> deque[(push_id, ts)]
 PUSH_RECENT_MAX = 100
 PUSH_RECENT_WINDOW = timedelta(seconds=30)
 
+# ---------------- Push subscriptions ----------------
+# { room: { user: [subscription objects] } }
+subscriptions: dict[str, dict[str, list[dict]]] = {}
+
+
+def normalize_endpoint(endpoint: str) -> str:
+    return endpoint.split("?")[0] if endpoint else ""
+
+
 # ---------------- Env / VAPID ----------------
 load_dotenv()
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY")  # required on client to subscribe
@@ -84,10 +93,11 @@ def init_db():
         """
         CREATE TABLE IF NOT EXISTS fcm_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user TEXT NOT NULL UNIQUE,
-            token TEXT NOT NULL,
-            ts TEXT NOT NULL
-        )
+            user TEXT NOT NULL,
+            token TEXT NOT NULL UNIQUE,
+            ts   TEXT NOT NULL
+);
+
         """
     )
 
@@ -102,7 +112,11 @@ def load_fcm_tokens():
     c.execute("SELECT user, token FROM fcm_tokens")
     rows = c.fetchall()
     conn.close()
-    return {user: token for user, token in rows}
+
+    fcm_tokens = {}
+    for user, token in rows:
+        fcm_tokens.setdefault(user, []).append(token)
+    return fcm_tokens
 
 
 def save_fcm_token(user: str, token: str):
@@ -112,8 +126,8 @@ def save_fcm_token(user: str, token: str):
         """
         INSERT INTO fcm_tokens (user, token, ts)
         VALUES (?, ?, ?)
-        ON CONFLICT(user) DO UPDATE SET
-            token=excluded.token,
+        ON CONFLICT(token) DO UPDATE SET
+            user=excluded.user,
             ts=excluded.ts
         """,
         (user, token, datetime.now(timezone.utc).isoformat()),
@@ -323,12 +337,12 @@ async def clear_messages(room: str):
 async def destroy_room(room: str):
     """
     Destroy a room completely:
-    - Clears its DB messages
+    - Clears DB messages
     - Removes it from memory
     - Kicks all users
-    - Clears push subscriptions
+    - Clears push subscriptions for that room
     """
-    # 0. Remove all push subscriptions for this room
+    # 0. Clear push subscriptions for this room
     if room in subscriptions:
         del subscriptions[room]
         print(f"🛑 All push subscriptions cleared for room {room}")
@@ -336,12 +350,11 @@ async def destroy_room(room: str):
     # 1. Clear DB
     clear_room(room)
 
-    # 2. Mark as destroyed (so old data won’t reappear)
+    # 2. Mark destroyed
     DESTROYED_ROOMS.add(room)
 
-    # 3. Remove from in-memory user mapping
-    if room in ROOM_USERS:
-        del ROOM_USERS[room]
+    # 3. Remove user mapping
+    ROOM_USERS.pop(room, None)
 
     # 4. Notify clients
     await sio.emit(
@@ -351,7 +364,7 @@ async def destroy_room(room: str):
     )
     await sio.emit("room_destroyed", {"room": room}, room=room)
 
-    # 5. Force all sids to leave the room
+    # 5. Force disconnect
     namespace = "/"
     if namespace in sio.manager.rooms and room in sio.manager.rooms[namespace]:
         sids = list(sio.manager.rooms[namespace][room])
@@ -360,10 +373,7 @@ async def destroy_room(room: str):
 
     print(f"💥 Room {room} destroyed.")
     return JSONResponse(
-        {
-            "status": "ok",
-            "message": f"Room {room} destroyed and all subscriptions cleared",
-        }
+        {"status": "ok", "message": f"Room {room} destroyed and subscriptions cleared"}
     )
 
 
@@ -453,104 +463,28 @@ async def message(sid, data):
     room = data.get("room")
     sender = data.get("sender")
     text = (data.get("text") or "").strip()
-    sender_sub = data.get("subscription")  # sender’s push subscription (optional)
     now = datetime.now(timezone.utc)
 
     if not text or not room or not sender:
         return
 
-    # duplicate message suppression (spam key)
+    # optional: keep duplicate suppression
     key = (room, sender)
     last = LAST_MESSAGE.get(key)
     if last and last[0] == text and (now - last[1]).total_seconds() < 1.5:
         return
     LAST_MESSAGE[key] = (text, now)
 
-    if room in DESTROYED_ROOMS:
-        return
-
     save_message(room, sender, text=text)
-
-    # Broadcast message to room
     await sio.emit(
         "message", {"sender": sender, "text": text, "ts": now.isoformat()}, room=room
     )
-    print(f"🟢 {room} | {sender}: {text}")
 
-    # -------------------------------------------------
-    # Prepare notification payload
-    # -------------------------------------------------
-    payload = {
-        "title": "Realtime Chat",
-        "sender": sender,
-        "text": text,
-        "room": room,
-        "url": f"/?room={room}",
-        "timestamp": now.isoformat(),
-    }
-    push_id = make_push_id(room, sender, text, payload["timestamp"])
+    # Web push
+    await send_push_to_room(room, sender, text)
 
-    sender_endpoint = None
-    if sender_sub and isinstance(sender_sub, dict):
-        sender_endpoint = normalize_endpoint(sender_sub.get("endpoint"))
-
-    # -------------------------------------------------
-    # Send WebPush (for PWA/browser clients)
-    # -------------------------------------------------
-    for user, subs in list(subscriptions.items()):
-        for sub in list(subs):
-            if not sub:
-                continue
-            target_endpoint = normalize_endpoint(sub.get("endpoint"))
-            if not target_endpoint:
-                continue
-
-            # Skip same endpoint (don't notify the tab that just sent)
-            if sender_endpoint and target_endpoint == sender_endpoint:
-                continue
-
-            # If we don’t know sender endpoint, avoid spamming sender’s other subs
-            if not sender_endpoint and user == sender:
-                continue
-
-            # Suppress if user is active in foreground
-            if user_active_foreground(user):
-                continue
-
-            if not should_send_push(target_endpoint, push_id, now):
-                continue
-
-            try:
-                webpush(
-                    subscription_info=sub,
-                    data=json.dumps(payload),
-                    vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={"sub": "mailto:example@domain.com"},
-                )
-            except WebPushException as e:
-                print(f"❌ WebPush failed for {user}: {e}")
-
-    # -------------------------------------------------
-    # Send Native Push via Firebase (for Android app users)
-    # -------------------------------------------------
-    for user, token in list(FCM_TOKENS.items()):
-        if user == sender:  # don't notify sender
-            continue
-        if user_active_foreground(user):  # suppress if active in app
-            continue
-
-        try:
-            msg = messaging.Message(
-                notification=messaging.Notification(
-                    title="Realtime Chat", body=f"{sender}: {text}"
-                ),
-                token=token,
-                data={"url": f"/?room={room}"},
-            )
-            response = messaging.send(msg)
-            print(f"📲 Sent FCM to {user}: {response}")
-        except Exception as e:
-            print(f"❌ FCM push failed for {user}: {e}")
+    # Android push (FCM)
+    await send_fcm_to_room(room, sender, text)
 
 
 @sio.event
@@ -628,11 +562,10 @@ async def disconnect(sid):
 async def startup_tasks():
     init_db()
     migrate_db()
-    migrate_fcm_tokens()
 
     global FCM_TOKENS
     FCM_TOKENS = load_fcm_tokens()
-    print(f"🔑 Loaded {len(FCM_TOKENS)} FCM tokens from DB")
+    print(f"🔑 Loaded {sum(len(v) for v in FCM_TOKENS.values())} FCM tokens from DB")
 
     async def loop_cleanup():
         while True:
@@ -660,26 +593,38 @@ async def startup_tasks():
 
 
 # ---------------- Subscribe / Push test ----------------
+# ---------------- Subscribe ----------------
 @app.post("/api/subscribe")
 async def subscribe(request: Request):
     body = await request.json()
     subscription = body.get("subscription")
     sender = body.get("sender")
-    if not sender or not subscription:
+    room = body.get("room")
+
+    if not sender or not subscription or not room:
         return JSONResponse(
-            {"error": "sender + subscription required"}, status_code=400
+            {"error": "sender, room, and subscription required"},
+            status_code=400,
         )
 
-    subs = subscriptions.setdefault(sender, [])
+    subs_for_room = subscriptions.setdefault(room, {}).setdefault(sender, [])
     endpoint = normalize_endpoint(subscription.get("endpoint"))
     if not endpoint:
         return JSONResponse({"error": "invalid endpoint"}, status_code=400)
-    if all(normalize_endpoint(s.get("endpoint")) != endpoint for s in subs):
-        subs.append(subscription)
-    print(f"✅ Subscription saved for {sender} (total={len(subs)})")
-    return {"message": f"Subscribed {sender}", "vapidPublicKey": VAPID_PUBLIC_KEY}
+
+    if all(normalize_endpoint(s.get("endpoint")) != endpoint for s in subs_for_room):
+        subs_for_room.append(subscription)
+
+    print(
+        f"✅ Subscription saved for {sender} in room {room} (total={len(subs_for_room)})"
+    )
+    return {
+        "message": f"Subscribed {sender} to {room}",
+        "vapidPublicKey": VAPID_PUBLIC_KEY,
+    }
 
 
+# ---------------- Unsubscribe ----------------
 @app.post("/api/unsubscribe")
 async def unsubscribe(request: Request):
     body = await request.json()
@@ -689,28 +634,28 @@ async def unsubscribe(request: Request):
 
     if not sender or not room or not subscription:
         return JSONResponse(
-            {"error": "sender, room, and subscription required"}, status_code=400
+            {"error": "sender, room, and subscription required"},
+            status_code=400,
         )
 
-    # check if room exists in subscriptions
     if room not in subscriptions or sender not in subscriptions[room]:
-        return {"message": f"No subscription found for {sender} in room {room}"}
+        return {"message": f"No subscription found for {sender} in {room}"}
 
     subs_for_room = subscriptions[room][sender]
-    endpoint = subscription.get("endpoint")
+    endpoint = normalize_endpoint(subscription.get("endpoint"))
 
-    new_list = [s for s in subs_for_room if s.get("endpoint") != endpoint]
-    subscriptions[room][sender] = new_list
-
-    # cleanup: if sender has no subs left, remove sender key
-    if not subscriptions[room][sender]:
+    new_list = [
+        s for s in subs_for_room if normalize_endpoint(s.get("endpoint")) != endpoint
+    ]
+    if new_list:
+        subscriptions[room][sender] = new_list
+    else:
         del subscriptions[room][sender]
 
-    # cleanup: if room has no subs left, remove room key
     if not subscriptions[room]:
         del subscriptions[room]
 
-    print(f"🛑 Unsubscribed {sender} from room {room}")
+    print(f"🛑 Unsubscribed {sender} from {room}")
     return {"message": f"Unsubscribed {sender} from {room}"}
 
 
@@ -802,24 +747,112 @@ async def send_push_notification():
     return {"status": "ok"}
 
 
+# ---------------- Web Push only ----------------
+async def send_push_to_room(room: str, sender: str, text: str):
+    if room not in subscriptions:
+        return
+
+    now = datetime.now(timezone.utc)
+    payload = {
+        "title": "Realtime Chat",
+        "sender": sender,
+        "text": text,
+        "room": room,
+        "url": f"/?room={room}",
+        "timestamp": now.isoformat(),
+    }
+    push_id = make_push_id(room, sender, text, payload["timestamp"])
+
+    for user, subs in subscriptions[room].items():
+        for sub in subs:
+            try:
+                endpoint = normalize_endpoint(sub.get("endpoint"))
+                if not endpoint:
+                    continue
+
+                # suppress duplicates
+                if not should_send_push(endpoint, push_id, now):
+                    continue
+
+                # optional: skip sender
+                if user == sender:
+                    continue
+
+                webpush(
+                    subscription_info=sub,
+                    data=json.dumps(payload),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": "mailto:example@example.com"},
+                )
+                print(f"🌍 WebPush sent to {user} in {room}")
+            except Exception as e:
+                print(f"❌ WebPush failed for {user}: {e}")
+
+
+async def send_fcm_to_room(room: str, sender: str, text: str):
+    now = datetime.now(timezone.utc)
+
+    for user, tokens in list(FCM_TOKENS.items()):
+        if user == sender:
+            continue
+        if user_active_foreground(user):
+            continue
+
+        if isinstance(tokens, str):
+            tokens = [tokens]
+
+        for token in tokens:
+            try:
+                msg = messaging.Message(
+                    notification=messaging.Notification(
+                        title="Realtime Chat", body=f"{sender}: {text}"
+                    ),
+                    token=token,
+                    data={
+                        "url": f"/?room={room}",
+                        "sender": sender,
+                        "message": text,
+                        "timestamp": now.isoformat(),
+                    },
+                )
+                response = messaging.send(msg)
+                print(f"📲 FCM sent to {user}: {response}")
+            except Exception as e:
+                print(f"❌ FCM push failed for {user}: {e}")
+
+
 @app.post("/send-fcm")
 async def send_fcm(request: Request):
     body = await request.json()
     user = body.get("user")
     title = body.get("title", "Chat Message")
     message = body.get("message", "")
+    room = body.get("room", "")
 
     if not user or user not in FCM_TOKENS:
         return JSONResponse({"error": "invalid user"}, status_code=400)
 
-    token = FCM_TOKENS[user]
+    # Ensure tokens are always a list
+    tokens = FCM_TOKENS[user]
+    if isinstance(tokens, str):
+        tokens = [tokens]
 
-    msg = messaging.Message(
-        notification=messaging.Notification(title=title, body=message), token=token
-    )
-    response = messaging.send(msg)
-    print("✅ FCM sent:", response)
-    return {"status": "ok", "id": response}
+    results = []
+    for token in tokens:
+        msg = messaging.Message(
+            notification=messaging.Notification(title=title, body=message),
+            token=token,
+            data={"url": f"/?room={room}", "sender": user, "message": message},
+        )
+        try:
+            response = messaging.send(msg)
+            print(f"✅ FCM sent to {user} [{token[:10]}...]: {response}")
+            results.append({"token": token, "id": response, "status": "ok"})
+        except Exception as e:
+            print(f"❌ Failed to send FCM to {user} [{token[:10]}...]: {e}")
+            results.append({"token": token, "error": str(e)})
+
+    return {"status": "done", "results": results}
 
 
 @app.post("/api/register-fcm")
