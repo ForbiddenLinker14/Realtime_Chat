@@ -671,6 +671,23 @@
 
     // =============== Web Push (browser only) ===============
     if (isWebPushSupported && !isCapacitor) {
+      async function requestNotificationPermission() {
+        let perm = await Notification.requestPermission();
+        console.log("📌 Notification permission:", perm);
+        return perm === "granted";
+      }
+
+      window.addEventListener("load", async () => {
+        const granted = await requestNotificationPermission();
+        if (granted) {
+          console.log("✅ Notifications allowed");
+        } else {
+          console.warn("⚠️ Notifications blocked by user");
+        }
+      });
+    }
+
+    if (isWebPushSupported && !isCapacitor) {
       function urlBase64ToUint8Array(base64String) {
         const padding = "=".repeat((4 - base64String.length % 4) % 4);
         const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
