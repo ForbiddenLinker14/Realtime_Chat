@@ -697,6 +697,18 @@
     };
 
     // =============== Web Push Notifications (VAPID) ===============
+    window.addEventListener("load", async () => {
+      if ("Notification" in window) {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+          console.log("✅ Notifications allowed on web");
+          await subscribeUser("anonymous");
+        } else {
+          console.log("🚫 Notifications denied on web");
+        }
+      }
+    });
+
     const VAPID_PUBLIC_KEY = 'BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw';
 
     function urlBase64ToUint8Array(base64String) {
