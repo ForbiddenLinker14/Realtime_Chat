@@ -15,7 +15,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, height=device-height" />
   <title>💬 Realtime Chat</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script type="module" src="/push.js"></script>
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#000000">
+
   <style>
     html,
     body {
@@ -673,329 +677,328 @@
 
 
   <script>
-  // ======================================================
-  // =============== Storage Utility ======================
-  // ======================================================
-  const Storage = {
-    set(k, v) {
-      try {
-        localStorage.setItem(k, v);
-        return;
-      } catch {}
-      try {
-        sessionStorage.setItem(k, v);
-        return;
-      } catch {}
-      document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
-    },
+    // ======================================================
+    // =============== Storage Utility ======================
+    // ======================================================
+    const Storage = {
+      set(k, v) {
+        try {
+          localStorage.setItem(k, v);
+          return;
+        } catch { }
+        try {
+          sessionStorage.setItem(k, v);
+          return;
+        } catch { }
+        document.cookie = `${k}=${encodeURIComponent(v)}; path=/`;
+      },
 
-    get(k) {
-      try {
-        return localStorage.getItem(k) || sessionStorage.getItem(k);
-      } catch {}
-      const m = document.cookie.match(new RegExp("(^| )" + k + "=([^;]+)"));
-      return m ? decodeURIComponent(m[2]) : null;
-    },
+      get(k) {
+        try {
+          return localStorage.getItem(k) || sessionStorage.getItem(k);
+        } catch { }
+        const m = document.cookie.match(new RegExp("(^| )" + k + "=([^;]+)"));
+        return m ? decodeURIComponent(m[2]) : null;
+      },
 
-    remove(k) {
-      try {
-        localStorage.removeItem(k);
-      } catch {}
-      try {
-        sessionStorage.removeItem(k);
-      } catch {}
-      document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
-    }
-  };
-
-  // ======================================================
-  // =============== Push Notifications ===================
-  // ======================================================
-  const VAPID_PUBLIC_KEY =
-    "BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw";
-
-  function urlBase64ToUint8Array(base64String) {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-    const rawData = atob(base64);
-    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
-  }
-
-  async function subscribeUser(sender) {
-    const registration = await navigator.serviceWorker.ready;
-    let subscription = await registration.pushManager.getSubscription();
-
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
-      });
-      console.log("📌 New subscription created:", JSON.stringify(subscription));
-    } else {
-      console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
-    }
-
-    localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
-
-    const body = {
-      sender: sender || "anonymous",
-      subscription: subscription.toJSON()
+      remove(k) {
+        try {
+          localStorage.removeItem(k);
+        } catch { }
+        try {
+          sessionStorage.removeItem(k);
+        } catch { }
+        document.cookie = `${k}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+      }
     };
 
-    const response = await fetch("/api/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
+    // ======================================================
+    // =============== Push Notifications ===================
+    // ======================================================
+    const VAPID_PUBLIC_KEY =
+      "BG2UPultjn00ejdUX4YQhGrQRPaJnLHA4n1afkUeni6YjsXnn-b9PInolQ-P79zvJD63LF5nZuI3iun0_TU81Lw";
 
-    const result = await response.json();
-    if (!response.ok) throw new Error(result?.error || "subscribe failed");
-
-    console.log("✅ Backend response:", result.message);
-    return subscription;
-  }
-
-  async function requestNotificationPermission() {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
-
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      console.log("✅ Notification permission granted.");
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      console.log("✅ Service Worker registered.", registration);
-    } else {
-      console.log("❌ Notification permission denied.");
+    function urlBase64ToUint8Array(base64String) {
+      const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+      const base64 = (base64String + padding)
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+      const rawData = atob(base64);
+      return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
     }
-  }
 
-  // ======================================================
-  // =============== Chat Application State ===============
-  // ======================================================
-  let socket,
-    currentRoom = "",
-    currentName = "";
-  let joinedRooms = new Set();
-  let lastPersistedTs = null;
-  let alreadyFetchingHistory = false;
-  let sending = false;
+    async function subscribeUser(sender) {
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
 
-  // ======================================================
-  // =============== Utility Functions ====================
-  // ======================================================
-  function escapeHtml(s) {
-    return (s ?? "").replace(/[&<>"']/g, (c) =>
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+        console.log("📌 New subscription created:", JSON.stringify(subscription));
+      } else {
+        console.log("🔄 Reusing existing subscription:", JSON.stringify(subscription));
+      }
+
+      localStorage.setItem("pushSub", JSON.stringify(subscription.toJSON()));
+
+      const body = {
+        sender: sender || "anonymous",
+        subscription: subscription.toJSON()
+      };
+
+      const response = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "subscribe failed");
+
+      console.log("✅ Backend response:", result.message);
+      return subscription;
+    }
+
+    async function requestNotificationPermission() {
+      if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
+
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        console.log("✅ Notification permission granted.");
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        console.log("✅ Service Worker registered.", registration);
+      } else {
+        console.log("❌ Notification permission denied.");
+      }
+    }
+
+    // ======================================================
+    // =============== Chat Application State ===============
+    // ======================================================
+    let socket,
+      currentRoom = "",
+      currentName = "";
+    let joinedRooms = new Set();
+    let lastPersistedTs = null;
+    let alreadyFetchingHistory = false;
+    let sending = false;
+
+    // ======================================================
+    // =============== Utility Functions ====================
+    // ======================================================
+    function escapeHtml(s) {
+      return (s ?? "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[
         c
       ])
-    );
-  }
-
-  function escapeAttr(s) {
-    return escapeHtml(s).replace(/"/g, "&quot;");
-  }
-
-  function bumpTs(ts) {
-    if (ts && (!lastPersistedTs || ts > lastPersistedTs)) {
-      lastPersistedTs = ts;
-    }
-  }
-
-  function sendActive(active) {
-    if (socket) socket.emit("status", { active });
-  }
-
-  // ======================================================
-  // =============== UI Functions =========================
-  // ======================================================
-  function toggleSidebar() {
-    const sidebar = document.getElementById("sidebar");
-    const showArrow = document.getElementById("show-arrow");
-
-    if (sidebar.classList.contains("hidden")) {
-      sidebar.classList.remove("hidden");
-      showArrow.style.display = "none";
-    } else {
-      sidebar.classList.add("hidden");
-      showArrow.style.display = "block";
-    }
-  }
-
-  // ======================================================
-  // =============== Room Management ======================
-  // ======================================================
-  function joinRoom() {
-    currentName = document.getElementById("name").value.trim();
-    currentRoom = document.getElementById("room").value.trim();
-
-    if (!currentName || !currentRoom) {
-      alert("Enter name and room first!");
-      return;
-    }
-
-    if (joinedRooms.has(currentRoom)) {
-      alert(`You are already in room "${currentRoom}"!`);
-      return;
-    }
-
-    Storage.set("chat_name", currentName);
-    Storage.set("chat_room", currentRoom);
-
-    document.getElementById("chat-container").style.display = "flex";
-    document.getElementById("input-area").style.display = "flex";
-    document.getElementById("intro").style.display = "none";
-    document.getElementById("messages").style.display = "block";
-
-    document.getElementById("messages").innerHTML = "";
-    lastPersistedTs = null;
-    alreadyFetchingHistory = false;
-    document.getElementById("input").disabled = false;
-    document.getElementById("send").disabled = false;
-    document.getElementById("attach").disabled = false;
-    document.getElementById("user-list").innerHTML = "";
-
-    if (socket) {
-      socket.off();
-      socket.disconnect();
-    }
-
-    socket = io("https://realtime-chat-1mv3.onrender.com", {
-      path: "/socket.io",
-      transports: ["websocket"]
-    });
-
-    function safeJoinWithRetry(attempt = 1) {
-      if (!socket || !socket.connected) return;
-      if (joinedRooms.has(currentRoom)) return;
-
-      socket.emit(
-        "join",
-        {
-          room: currentRoom,
-          sender: currentName,
-          lastTs: lastPersistedTs || null
-        },
-        (ack) => {
-          if (ack && ack.success) {
-            console.log("✅ Joined room:", currentRoom);
-            joinedRooms.add(currentRoom);
-            sendActive(!document.hidden);
-          } else {
-            console.log("⚠️ Join failed, retrying...", attempt);
-            setTimeout(() => safeJoinWithRetry(attempt + 1), 500);
-          }
-        }
       );
     }
 
-    socket.on("users_update", updateUserList);
-    socket.on("left_room", (data) => {
-      if (data.room === currentRoom)
-        document.getElementById("user-list").innerHTML = "";
-    });
-    socket.on("room_destroyed", handleRoomDestroyed);
-    socket.on("clear", handleRoomCleared);
-    socket.on("connect", () => safeJoinWithRetry());
-    socket.on("message", addMessage);
-    socket.on("file", addFileMessage);
-
-    document.getElementById("send").onclick = sendMessage;
-    document.getElementById("input").onkeydown = (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-      }
-    };
-
-    document.getElementById("attach").onclick = (e) => {
-      e.preventDefault();
-      document.getElementById("fileInput").click();
-    };
-
-    document.getElementById("fileInput").onchange = handleFileUpload;
-  }
-
-  async function sendMessage() {
-    if (sending) return;
-
-    const inputEl = document.getElementById("input");
-    const text = inputEl.value.trim();
-    if (!text || !currentRoom) return;
-
-    sending = true;
-    document.getElementById("send").disabled = true;
-
-    let sub = null;
-    try {
-      console.log("📌 Current permission:", Notification.permission);
-
-      await subscribeUser(currentName);
-      const savedSub = localStorage.getItem("pushSub");
-      sub = savedSub ? JSON.parse(savedSub) : null;
-    } catch (err) {
-      console.warn("⚠️ Subscription failed, but sending message anyway:", err);
+    function escapeAttr(s) {
+      return escapeHtml(s).replace(/"/g, "&quot;");
     }
 
-    socket.emit(
-      "message",
-      { room: currentRoom, sender: currentName, text, subscription: sub },
-      () => {
-        sending = false;
-        document.getElementById("send").disabled = false;
+    function bumpTs(ts) {
+      if (ts && (!lastPersistedTs || ts > lastPersistedTs)) {
+        lastPersistedTs = ts;
       }
-    );
+    }
 
-    inputEl.value = "";
-  }
+    function sendActive(active) {
+      if (socket) socket.emit("status", { active });
+    }
 
-  function addMessage(data) {
-    const messages = document.getElementById("messages");
-    const last = messages.lastElementChild;
+    // ======================================================
+    // =============== UI Functions =========================
+    // ======================================================
+    function toggleSidebar() {
+      const sidebar = document.getElementById("sidebar");
+      const showArrow = document.getElementById("show-arrow");
 
-    if (data.sender === "System" && last && last.textContent === data.text) return;
+      if (sidebar.classList.contains("hidden")) {
+        sidebar.classList.remove("hidden");
+        showArrow.style.display = "none";
+      } else {
+        sidebar.classList.add("hidden");
+        showArrow.style.display = "block";
+      }
+    }
 
-    if (
-      !currentRoom &&
-      data.sender === "System" &&
-      /joined/i.test(data.text) &&
-      data.text.includes(currentName)
-    )
-      return;
+    // ======================================================
+    // =============== Room Management ======================
+    // ======================================================
+    function joinRoom() {
+      currentName = document.getElementById("name").value.trim();
+      currentRoom = document.getElementById("room").value.trim();
 
-    const div = document.createElement("div");
+      if (!currentName || !currentRoom) {
+        alert("Enter name and room first!");
+        return;
+      }
 
-    if (data.sender === "System") {
-      div.className = "msg system";
-      div.textContent = data.text;
-    } else {
+      if (joinedRooms.has(currentRoom)) {
+        alert(`You are already in room "${currentRoom}"!`);
+        return;
+      }
+
+      Storage.set("chat_name", currentName);
+      Storage.set("chat_room", currentRoom);
+
+      document.getElementById("chat-container").style.display = "flex";
+      document.getElementById("input-area").style.display = "flex";
+      document.getElementById("intro").style.display = "none";
+      document.getElementById("messages").style.display = "block";
+
+      document.getElementById("messages").innerHTML = "";
+      lastPersistedTs = null;
+      alreadyFetchingHistory = false;
+      document.getElementById("input").disabled = false;
+      document.getElementById("send").disabled = false;
+      document.getElementById("attach").disabled = false;
+      document.getElementById("user-list").innerHTML = "";
+
+      if (socket) {
+        socket.off();
+        socket.disconnect();
+      }
+
+      socket = io("https://realtime-chat-1mv3.onrender.com", {
+        path: "/socket.io",
+        transports: ["websocket"]
+      });
+
+      function safeJoinWithRetry(attempt = 1) {
+        if (!socket || !socket.connected) return;
+        if (joinedRooms.has(currentRoom)) return;
+
+        socket.emit(
+          "join",
+          {
+            room: currentRoom,
+            sender: currentName,
+            lastTs: lastPersistedTs || null
+          },
+          (ack) => {
+            if (ack && ack.success) {
+              console.log("✅ Joined room:", currentRoom);
+              joinedRooms.add(currentRoom);
+              sendActive(!document.hidden);
+            } else {
+              console.log("⚠️ Join failed, retrying...", attempt);
+              setTimeout(() => safeJoinWithRetry(attempt + 1), 500);
+            }
+          }
+        );
+      }
+
+      socket.on("users_update", updateUserList);
+      socket.on("left_room", (data) => {
+        if (data.room === currentRoom)
+          document.getElementById("user-list").innerHTML = "";
+      });
+      socket.on("room_destroyed", handleRoomDestroyed);
+      socket.on("clear", handleRoomCleared);
+      socket.on("connect", () => safeJoinWithRetry());
+      socket.on("message", addMessage);
+      socket.on("file", addFileMessage);
+
+      document.getElementById("send").onclick = sendMessage;
+      document.getElementById("input").onkeydown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+
+      document.getElementById("attach").onclick = (e) => {
+        e.preventDefault();
+        document.getElementById("fileInput").click();
+      };
+
+      document.getElementById("fileInput").onchange = handleFileUpload;
+    }
+
+    async function sendMessage() {
+      if (sending) return;
+
+      const inputEl = document.getElementById("input");
+      const text = inputEl.value.trim();
+      if (!text || !currentRoom) return;
+
+      sending = true;
+      document.getElementById("send").disabled = true;
+
+      let sub = null;
+      try {
+        console.log("📌 Current permission:", Notification.permission);
+
+        await subscribeUser(currentName);
+        const savedSub = localStorage.getItem("pushSub");
+        sub = savedSub ? JSON.parse(savedSub) : null;
+      } catch (err) {
+        console.warn("⚠️ Subscription failed, but sending message anyway:", err);
+      }
+
+      socket.emit(
+        "message",
+        { room: currentRoom, sender: currentName, text, subscription: sub },
+        () => {
+          sending = false;
+          document.getElementById("send").disabled = false;
+        }
+      );
+
+      inputEl.value = "";
+    }
+
+    function addMessage(data) {
+      const messages = document.getElementById("messages");
+      const last = messages.lastElementChild;
+
+      if (data.sender === "System" && last && last.textContent === data.text) return;
+
+      if (
+        !currentRoom &&
+        data.sender === "System" &&
+        /joined/i.test(data.text) &&
+        data.text.includes(currentName)
+      )
+        return;
+
+      const div = document.createElement("div");
+
+      if (data.sender === "System") {
+        div.className = "msg system";
+        div.textContent = data.text;
+      } else {
+        bumpTs(data.ts);
+        const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
+        div.className = "msg " + (isMe ? "me" : "other");
+        div.dataset.ts = data.ts;
+        div.innerHTML = `<strong>${data.sender}</strong><br>${escapeHtml(
+          data.text
+        )}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
+      }
+
+      messages.appendChild(div);
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+    }
+
+    function addFileMessage(data) {
       bumpTs(data.ts);
+      const div = document.createElement("div");
       const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
       div.className = "msg " + (isMe ? "me" : "other");
       div.dataset.ts = data.ts;
-      div.innerHTML = `<strong>${data.sender}</strong><br>${escapeHtml(
-        data.text
-      )}<br><small>${new Date(data.ts).toLocaleString()}</small>`;
-    }
 
-    messages.appendChild(div);
-    messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
-  }
-
-  function addFileMessage(data) {
-    bumpTs(data.ts);
-    const div = document.createElement("div");
-    const isMe = data.sender.toLowerCase() === currentName.toLowerCase();
-    div.className = "msg " + (isMe ? "me" : "other");
-    div.dataset.ts = data.ts;
-
-    if (data.mimetype && data.mimetype.startsWith("image/")) {
-      div.innerHTML = `
+      if (data.mimetype && data.mimetype.startsWith("image/")) {
+        div.innerHTML = `
         <div class="username"><strong>${data.sender}</strong></div>
         <div class="image-wrapper">
-          <a href="${data.data}" download="${
-        data.filename
-      }" class="download-icon" title="Download">
+          <a href="${data.data}" download="${data.filename
+          }" class="download-icon" title="Download">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="white" viewBox="0 0 24 24">
               <path d="M12 16l4-5h-3V4h-2v7H8l4 5zM5 18h14v2H5v-2z"/>
             </svg>
@@ -1003,358 +1006,358 @@
           <img src="${data.data}" alt="${escapeAttr(data.filename)}">
         </div>
         <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
-    } else {
-      div.innerHTML = `
+      } else {
+        div.innerHTML = `
         <div class="username"><strong>${data.sender}</strong></div>
         <a href="${data.data}" download="${escapeAttr(
-        data.filename
-      )}" class="download-link">📎 ${escapeHtml(
-        data.filename || "file"
-      )}</a><br>
+          data.filename
+        )}" class="download-link">📎 ${escapeHtml(
+          data.filename || "file"
+        )}</a><br>
         <div class="timestamp"><small>${new Date(data.ts).toLocaleString()}</small></div>`;
+      }
+
+      const messages = document.getElementById("messages");
+      messages.appendChild(div);
+      messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
     }
 
-    const messages = document.getElementById("messages");
-    messages.appendChild(div);
-    messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
-  }
+    function handleFileUpload() {
+      const file = document.getElementById("fileInput").files[0];
+      if (!file || !currentRoom) return;
 
-  function handleFileUpload() {
-    const file = document.getElementById("fileInput").files[0];
-    if (!file || !currentRoom) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        socket.emit("file", {
+          room: currentRoom,
+          sender: currentName,
+          filename: file.name,
+          mimetype: file.type,
+          data: reader.result
+        });
+      };
+      reader.readAsDataURL(file);
+    }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      socket.emit("file", {
-        room: currentRoom,
-        sender: currentName,
-        filename: file.name,
-        mimetype: file.type,
-        data: reader.result
+    function updateUserList(data) {
+      if (!currentRoom || data.room !== currentRoom) return;
+
+      const list = document.getElementById("user-list");
+      const seen = new Set();
+      const existing = new Map();
+
+      list.querySelectorAll("li").forEach((li) =>
+        existing.set(li.getAttribute("data-name"), li)
+      );
+
+      data.users.forEach((u) => {
+        if (seen.has(u.name)) return;
+        seen.add(u.name);
+
+        const color = u.status === "online" ? "#25d366" : "red";
+        const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
+
+        let li = existing.get(u.name);
+        if (li) {
+          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+          existing.delete(u.name);
+        } else {
+          li = document.createElement("li");
+          li.setAttribute("data-name", u.name);
+          li.className = "fade-in";
+          li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
+          list.appendChild(li);
+        }
       });
-    };
-    reader.readAsDataURL(file);
-  }
 
-  function updateUserList(data) {
-    if (!currentRoom || data.room !== currentRoom) return;
+      existing.forEach((li) => {
+        li.classList.add("fade-out");
+        setTimeout(() => li.remove(), 300);
+      });
+    }
 
-    const list = document.getElementById("user-list");
-    const seen = new Set();
-    const existing = new Map();
+    function handleRoomDestroyed(data) {
+      if (currentRoom === data.room) {
+        document.getElementById("input").disabled = true;
+        document.getElementById("send").disabled = true;
+        document.getElementById("attach").disabled = true;
 
-    list.querySelectorAll("li").forEach((li) =>
-      existing.set(li.getAttribute("data-name"), li)
-    );
+        addMessage({
+          sender: "System",
+          text: "Room destroyed. You cannot send messages until you join a new room.",
+          ts: new Date().toISOString()
+        });
 
-    data.users.forEach((u) => {
-      if (seen.has(u.name)) return;
-      seen.add(u.name);
-
-      const color = u.status === "online" ? "#25d366" : "red";
-      const displayName = u.name === currentName ? `${u.name} (Me)` : u.name;
-
-      let li = existing.get(u.name);
-      if (li) {
-        li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-        existing.delete(u.name);
-      } else {
-        li = document.createElement("li");
-        li.setAttribute("data-name", u.name);
-        li.className = "fade-in";
-        li.innerHTML = `<span style="color:${color}">●</span> ${displayName}`;
-        list.appendChild(li);
+        lastPersistedTs = null;
+        joinedRooms.delete(data.room);
+        currentRoom = "";
+        Storage.remove("chat_name");
+        Storage.remove("chat_room");
+        document.getElementById("user-list").innerHTML = "";
+        document.getElementById("chat-container").style.display = "none";
+        document.getElementById("input-area").style.display = "none";
+        document.getElementById("intro").style.display = "block";
+        document.getElementById("messages").style.display = "none";
       }
-    });
+    }
 
-    existing.forEach((li) => {
-      li.classList.add("fade-out");
-      setTimeout(() => li.remove(), 300);
-    });
-  }
+    function handleRoomCleared(data) {
+      if (currentRoom === data.room) {
+        document.getElementById("messages").innerHTML = "";
+        addMessage({
+          sender: "System",
+          text: data.message,
+          ts: new Date().toISOString()
+        });
+        lastPersistedTs = null;
+      }
+    }
 
-  function handleRoomDestroyed(data) {
-    if (currentRoom === data.room) {
+    const API_BASE = "https://realtime-chat-1mv3.onrender.com";
+
+    // expose globally (important for Android WebView buttons)
+    window.clearRoom = async function clearRoom() {
+      if (!currentRoom) {
+        alert("Join a room first!");
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/clear/${encodeURIComponent(currentRoom)}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" }, // Android fix
+            cache: "no-store"
+          }
+        );
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Failed to clear room: ${res.status}`);
+
+        console.log("✅", data.message);
+
+        // Optional feedback
+        addMessage({
+          sender: "System",
+          text: data.message,
+          ts: new Date().toISOString()
+        });
+      } catch (err) {
+        console.error("❌ clearRoom error:", err);
+        alert(err.message);
+      }
+    };
+
+    window.destroyRoom = async function destroyRoom() {
+      if (!currentRoom) {
+        alert("Join a room first!");
+        return;
+      }
+
+      if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/destroy/${encodeURIComponent(currentRoom)}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" } // Android fix
+          }
+        );
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Failed to destroy room: ${res.status}`);
+
+        console.log("✅", data.message);
+
+        // reset UI
+        document.getElementById("messages").innerHTML = "";
+        addMessage({
+          sender: "System",
+          text: "Room destroyed. All messages cleared. Please join a new room.",
+          ts: new Date().toISOString()
+        });
+
+        lastPersistedTs = null;
+        Storage.remove("chat_name");
+        Storage.remove("chat_room");
+        joinedRooms.delete(currentRoom);
+        currentRoom = "";
+        document.getElementById("user-list").innerHTML = "";
+        document.getElementById("chat-container").style.display = "none";
+        document.getElementById("input-area").style.display = "none";
+        document.getElementById("intro").style.display = "block";
+        document.getElementById("messages").style.display = "none";
+      } catch (err) {
+        console.error("❌ destroyRoom error:", err);
+        alert(err.message);
+      }
+    };
+
+    function leaveRoom() {
+      if (!currentRoom) {
+        alert("You are not in a room!");
+        return;
+      }
+
+      const leftRoom = currentRoom;
+      socket.emit("leave", { room: currentRoom, sender: currentName });
+
       document.getElementById("input").disabled = true;
       document.getElementById("send").disabled = true;
       document.getElementById("attach").disabled = true;
 
       addMessage({
         sender: "System",
-        text: "Room destroyed. You cannot send messages until you join a new room.",
+        text: `YOU LEFT FROM ROOM ${leftRoom}`,
         ts: new Date().toISOString()
       });
 
       lastPersistedTs = null;
-      joinedRooms.delete(data.room);
-      currentRoom = "";
-      Storage.remove("chat_name");
-      Storage.remove("chat_room");
-      document.getElementById("user-list").innerHTML = "";
-      document.getElementById("chat-container").style.display = "none";
-      document.getElementById("input-area").style.display = "none";
-      document.getElementById("intro").style.display = "block";
-      document.getElementById("messages").style.display = "none";
-    }
-  }
-
-  function handleRoomCleared(data) {
-    if (currentRoom === data.room) {
-      document.getElementById("messages").innerHTML = "";
-      addMessage({
-        sender: "System",
-        text: data.message,
-        ts: new Date().toISOString()
-      });
-      lastPersistedTs = null;
-    }
-  }
-
-  const API_BASE = "https://realtime-chat-1mv3.onrender.com";
-
-  // expose globally (important for Android WebView buttons)
-  window.clearRoom = async function clearRoom() {
-    if (!currentRoom) {
-      alert("Join a room first!");
-      return;
-    }
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/clear/${encodeURIComponent(currentRoom)}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" }, // Android fix
-          cache: "no-store"
-        }
-      );
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Failed to clear room: ${res.status}`);
-
-      console.log("✅", data.message);
-
-      // Optional feedback
-      addMessage({
-        sender: "System",
-        text: data.message,
-        ts: new Date().toISOString()
-      });
-    } catch (err) {
-      console.error("❌ clearRoom error:", err);
-      alert(err.message);
-    }
-  };
-
-  window.destroyRoom = async function destroyRoom() {
-    if (!currentRoom) {
-      alert("Join a room first!");
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/destroy/${encodeURIComponent(currentRoom)}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" } // Android fix
-        }
-      );
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || `Failed to destroy room: ${res.status}`);
-
-      console.log("✅", data.message);
-
-      // reset UI
-      document.getElementById("messages").innerHTML = "";
-      addMessage({
-        sender: "System",
-        text: "Room destroyed. All messages cleared. Please join a new room.",
-        ts: new Date().toISOString()
-      });
-
-      lastPersistedTs = null;
-      Storage.remove("chat_name");
-      Storage.remove("chat_room");
       joinedRooms.delete(currentRoom);
       currentRoom = "";
+      Storage.remove("chat_name");
+      Storage.remove("chat_room");
       document.getElementById("user-list").innerHTML = "";
-      document.getElementById("chat-container").style.display = "none";
+      document.getElementById("chat-container").style.display = "block";
       document.getElementById("input-area").style.display = "none";
-      document.getElementById("intro").style.display = "block";
-      document.getElementById("messages").style.display = "none";
-    } catch (err) {
-      console.error("❌ destroyRoom error:", err);
-      alert(err.message);
-    }
-  };
-
-  function leaveRoom() {
-    if (!currentRoom) {
-      alert("You are not in a room!");
-      return;
+      document.getElementById("messages").style.display = "block";
     }
 
-    const leftRoom = currentRoom;
-    socket.emit("leave", { room: currentRoom, sender: currentName });
+    // ======================================================
+    // =============== Event Listeners ======================
+    // ======================================================
+    document.addEventListener("visibilitychange", () =>
+      sendActive(!document.hidden)
+    );
+    window.addEventListener("focus", () => sendActive(true));
+    window.addEventListener("blur", () => sendActive(false));
 
-    document.getElementById("input").disabled = true;
-    document.getElementById("send").disabled = true;
-    document.getElementById("attach").disabled = true;
-
-    addMessage({
-      sender: "System",
-      text: `YOU LEFT FROM ROOM ${leftRoom}`,
-      ts: new Date().toISOString()
+    window.addEventListener("offline", () => {
+      if (socket && socket.connected) socket.disconnect();
     });
 
-    lastPersistedTs = null;
-    joinedRooms.delete(currentRoom);
-    currentRoom = "";
-    Storage.remove("chat_name");
-    Storage.remove("chat_room");
-    document.getElementById("user-list").innerHTML = "";
-    document.getElementById("chat-container").style.display = "block";
-    document.getElementById("input-area").style.display = "none";
-    document.getElementById("messages").style.display = "block";
-  }
+    let reconnectTimer;
+    window.addEventListener("online", () => {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(() => {
+        if (socket && !socket.connected && currentRoom && currentName) {
+          socket.connect();
+          socket.emit("join", {
+            room: currentRoom,
+            sender: currentName,
+            lastTs: lastPersistedTs || null
+          });
+        }
+      }, 300);
+    });
 
-  // ======================================================
-  // =============== Event Listeners ======================
-  // ======================================================
-  document.addEventListener("visibilitychange", () =>
-    sendActive(!document.hidden)
-  );
-  window.addEventListener("focus", () => sendActive(true));
-  window.addEventListener("blur", () => sendActive(false));
-
-  window.addEventListener("offline", () => {
-    if (socket && socket.connected) socket.disconnect();
-  });
-
-  let reconnectTimer;
-  window.addEventListener("online", () => {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      if (socket && !socket.connected && currentRoom && currentName) {
-        socket.connect();
-        socket.emit("join", {
-          room: currentRoom,
-          sender: currentName,
-          lastTs: lastPersistedTs || null
-        });
-      }
-    }, 300);
-  });
-
-  // ======================================================
-  // =============== Initialization =======================
-  // ======================================================
-  window.addEventListener("load", async () => {
-    await requestNotificationPermission();
-    const savedName = Storage.get("chat_name");
-    const savedRoom = Storage.get("chat_room");
-
-    if (savedName && savedRoom) {
-      document.getElementById("name").value = savedName;
-      document.getElementById("room").value = savedRoom;
-      joinRoom({ preserveMessages: true });
-    } else {
-      document.getElementById("intro").style.display = "block";
-    }
-  });
-
-  document
-    .getElementById("chat-title")
-    .addEventListener("click", () => {
+    // ======================================================
+    // =============== Initialization =======================
+    // ======================================================
+    window.addEventListener("load", async () => {
+      await requestNotificationPermission();
       const savedName = Storage.get("chat_name");
       const savedRoom = Storage.get("chat_room");
 
       if (savedName && savedRoom) {
         document.getElementById("name").value = savedName;
         document.getElementById("room").value = savedRoom;
-        joinRoom();
+        joinRoom({ preserveMessages: true });
       } else {
-        document.getElementById("chat-container").style.display = "none";
-        document.getElementById("input-area").style.display = "none";
-        document.getElementById("messages").style.display = "none";
         document.getElementById("intro").style.display = "block";
       }
     });
 
-  // ======================================================
-  // =============== Capacitor Push Notifications =========
-  // ======================================================
-  document.addEventListener("DOMContentLoaded", async () => {
-    const { PushNotifications } = Capacitor.Plugins;
+    document
+      .getElementById("chat-title")
+      .addEventListener("click", () => {
+        const savedName = Storage.get("chat_name");
+        const savedRoom = Storage.get("chat_room");
 
-    if (!PushNotifications) {
-      console.error("❌ PushNotifications plugin not available");
-      return;
-    }
+        if (savedName && savedRoom) {
+          document.getElementById("name").value = savedName;
+          document.getElementById("room").value = savedRoom;
+          joinRoom();
+        } else {
+          document.getElementById("chat-container").style.display = "none";
+          document.getElementById("input-area").style.display = "none";
+          document.getElementById("messages").style.display = "none";
+          document.getElementById("intro").style.display = "block";
+        }
+      });
 
-    // Ask for permission
-    let permStatus = await PushNotifications.requestPermissions();
-    console.log("📌 Permission:", permStatus);
+    // ======================================================
+    // =============== Capacitor Push Notifications =========
+    // ======================================================
+    document.addEventListener("DOMContentLoaded", async () => {
+      const { PushNotifications } = Capacitor.Plugins;
 
-    if (permStatus.receive === "granted") {
-      await PushNotifications.register();
-    }
-
-    // Registration success → send token to backend
-    PushNotifications.addListener("registration", async (token) => {
-      console.log("📱 Push registration token:", token.value);
-
-      try {
-        await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: token.value,
-            user: localStorage.getItem("username") || "guest"
-          })
-        });
-        console.log("📡 Token sent to backend");
-      } catch (err) {
-        console.error("❌ Failed to send token:", err);
+      if (!PushNotifications) {
+        console.error("❌ PushNotifications plugin not available");
+        return;
       }
+
+      // Ask for permission
+      let permStatus = await PushNotifications.requestPermissions();
+      console.log("📌 Permission:", permStatus);
+
+      if (permStatus.receive === "granted") {
+        await PushNotifications.register();
+      }
+
+      // Registration success → send token to backend
+      PushNotifications.addListener("registration", async (token) => {
+        console.log("📱 Push registration token:", token.value);
+
+        try {
+          await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token: token.value,
+              user: localStorage.getItem("username") || "guest"
+            })
+          });
+          console.log("📡 Token sent to backend");
+        } catch (err) {
+          console.error("❌ Failed to send token:", err);
+        }
+      });
+
+      // Errors
+      PushNotifications.addListener("registrationError", (err) => {
+        console.error("❌ Registration error:", err.error);
+      });
+
+      // Foreground push
+      PushNotifications.addListener(
+        "pushNotificationReceived",
+        (notification) => {
+          console.log("📩 Push received:", notification);
+        }
+      );
+
+      // Notification tapped
+      PushNotifications.addListener(
+        "pushNotificationActionPerformed",
+        (action) => {
+          console.log("👉 Notification tapped:", action.notification);
+        }
+      );
+
+      // Example clear function
+      window.clearNotifications = async () => {
+        try {
+          await PushNotifications.removeAllDeliveredNotifications();
+          console.log("🧹 All notifications cleared");
+        } catch (err) {
+          console.error("❌ Failed to clear notifications:", err);
+        }
+      };
     });
-
-    // Errors
-    PushNotifications.addListener("registrationError", (err) => {
-      console.error("❌ Registration error:", err.error);
-    });
-
-    // Foreground push
-    PushNotifications.addListener(
-      "pushNotificationReceived",
-      (notification) => {
-        console.log("📩 Push received:", notification);
-      }
-    );
-
-    // Notification tapped
-    PushNotifications.addListener(
-      "pushNotificationActionPerformed",
-      (action) => {
-        console.log("👉 Notification tapped:", action.notification);
-      }
-    );
-
-    // Example clear function
-    window.clearNotifications = async () => {
-      try {
-        await PushNotifications.removeAllDeliveredNotifications();
-        console.log("🧹 All notifications cleared");
-      } catch (err) {
-        console.error("❌ Failed to clear notifications:", err);
-      }
-    };
-  });
-</script>
+  </script>
 
 </body>
 
