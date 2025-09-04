@@ -27,7 +27,7 @@ ROOM_USERS = {}  # { room: { username: sid } }
 LAST_MESSAGE = {}  # {(room, username): (text, ts)}
 # subscriptions = {}  # username -> [subscription objects]
 USER_STATUS = {}  # sid -> {"user": username, "active": bool}
-FCM_TOKENS = {}  # user -> token
+FCM_TOKENS = {"<username>": {"<room_id>": ["<token1>", "<token2>", ...]}}
 
 # Push de-duplication: per-endpoint recent payload IDs sent
 PUSH_RECENT = {}  # endpoint -> deque[(push_id, ts)]
@@ -92,13 +92,14 @@ def init_db():
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS fcm_tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user TEXT NOT NULL,
-            token TEXT NOT NULL UNIQUE,
-            ts   TEXT NOT NULL
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user TEXT NOT NULL,
+    room TEXT NOT NULL,
+    token TEXT NOT NULL,
+    ts TEXT NOT NULL,
+    UNIQUE(user, room, token)
 );
-
-        """
+  """
     )
 
     conn.commit()
@@ -106,34 +107,53 @@ def init_db():
 
 
 # ---------------- Helpers for FCM tokens ----------------
+# ---------------- Helpers for FCM tokens ----------------
 def load_fcm_tokens():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT user, token FROM fcm_tokens")
+    c.execute("SELECT user, room, token FROM fcm_tokens")
     rows = c.fetchall()
     conn.close()
 
-    fcm_tokens = {}
-    for user, token in rows:
-        fcm_tokens.setdefault(user, []).append(token)
+    fcm_tokens: dict[str, dict[str, list[str]]] = {}
+    for user, room, token in rows:
+        fcm_tokens.setdefault(user, {}).setdefault(room, []).append(token)
     return fcm_tokens
 
 
-def save_fcm_token(user: str, token: str):
+def save_fcm_token(user: str, room: str, token: str):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
         """
-        INSERT INTO fcm_tokens (user, token, ts)
-        VALUES (?, ?, ?)
-        ON CONFLICT(token) DO UPDATE SET
-            user=excluded.user,
-            ts=excluded.ts
+        INSERT INTO fcm_tokens (user, room, token, ts)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user, room, token) DO UPDATE SET ts=excluded.ts
         """,
-        (user, token, datetime.now(timezone.utc).isoformat()),
+        (user, room, token, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
     conn.close()
+
+
+# ✅ Add this
+def register_fcm_token(user: str, room: str, token: str):
+    if user not in FCM_TOKENS:
+        FCM_TOKENS[user] = {}
+    if room not in FCM_TOKENS[user]:
+        FCM_TOKENS[user][room] = []
+    if token not in FCM_TOKENS[user][room]:
+        FCM_TOKENS[user][room].append(token)
+        print(f"🔑 Registered FCM token for {user} in room {room}")
+
+
+def delete_fcm_tokens_for_room(room: str):
+    conn = sqlite3.connect("chat.db")
+    cur = conn.cursor()
+    cur.execute("DELETE FROM fcm_tokens WHERE room = ?", (room,))
+    conn.commit()
+    conn.close()
+    print(f"🗑️ Deleted all FCM tokens from DB for room {room}")
 
 
 # ---------------- Migration: add UNIQUE(user) if missing ----------------
@@ -335,19 +355,23 @@ async def clear_messages(room: str):
 
 @app.delete("/destroy/{room}")
 async def destroy_room(room: str):
-    """
-    Destroy a room completely:
-    - Clears DB messages
-    - Removes it from memory
-    - Kicks all users
-    - Clears push subscriptions for that room
-    """
-    # 0. Clear push subscriptions for this room
+    # 0. Clear webpush subscriptions
     if room in subscriptions:
         del subscriptions[room]
-        print(f"🛑 All push subscriptions cleared for room {room}")
+        print(f"🛑 All webpush subscriptions cleared for room {room}")
 
-    # 1. Clear DB
+    # 0b. Clear in-memory FCM tokens for this room
+    for user in list(FCM_TOKENS.keys()):
+        if room in FCM_TOKENS[user]:
+            del FCM_TOKENS[user][room]
+            print(f"🧹 Removed FCM tokens for {user} in room {room}")
+        if not FCM_TOKENS[user]:
+            del FCM_TOKENS[user]
+
+    # 0c. Clear persisted FCM tokens in DB
+    delete_fcm_tokens_for_room(room)
+
+    # 1. Clear DB messages
     clear_room(room)
 
     # 2. Mark destroyed
@@ -356,7 +380,7 @@ async def destroy_room(room: str):
     # 3. Remove user mapping
     ROOM_USERS.pop(room, None)
 
-    # 4. Notify clients
+    # 4. Notify clients + force disconnect
     await sio.emit(
         "clear",
         {"room": room, "message": "Room destroyed. All messages cleared."},
@@ -364,17 +388,14 @@ async def destroy_room(room: str):
     )
     await sio.emit("room_destroyed", {"room": room}, room=room)
 
-    # 5. Force disconnect
     namespace = "/"
     if namespace in sio.manager.rooms and room in sio.manager.rooms[namespace]:
         sids = list(sio.manager.rooms[namespace][room])
         for sid in sids:
             await sio.leave_room(sid, room, namespace=namespace)
 
-    print(f"💥 Room {room} destroyed.")
-    return JSONResponse(
-        {"status": "ok", "message": f"Room {room} destroyed and subscriptions cleared"}
-    )
+    print(f"💥 Room {room} destroyed (history + FCM tokens wiped from memory + DB).")
+    return {"status": "ok"}
 
 
 # ---------------- Socket.IO Events ----------------
@@ -383,29 +404,36 @@ async def join(sid, data):
     room = data["room"]
     username = data["sender"]
     last_ts = data.get("lastTs")
+    token = data.get("fcmToken")  # 🔑 client should send token when joining
 
+    # revive destroyed room
     if room in DESTROYED_ROOMS:
         DESTROYED_ROOMS.remove(room)
 
     if room not in ROOM_USERS:
         ROOM_USERS[room] = {}
 
+    # handle duplicate sessions
     old_sid = ROOM_USERS[room].get(username)
-
     if old_sid == sid:
         return {"success": True, "message": "Already in room"}
-
     if old_sid and old_sid != sid:
         try:
             await sio.leave_room(old_sid, room)
         except Exception:
             pass
 
+    # map user → sid
     ROOM_USERS[room][username] = sid
     await sio.enter_room(sid, room)
     await broadcast_users(room)
 
-    # send only missed messages
+    # 🔑 register token in memory + DB
+    if token:
+        register_fcm_token(username, room, token)
+        save_fcm_token(username, room, token)
+
+    # send missed messages
     for sender_, text, filename, mimetype, filedata, ts in load_messages(room):
         if last_ts and ts <= last_ts:
             continue
@@ -426,6 +454,7 @@ async def join(sid, data):
                 "message", {"sender": sender_, "text": text, "ts": ts}, to=sid
             )
 
+    # broadcast system join
     if not old_sid:
         await sio.emit(
             "message",
@@ -436,6 +465,7 @@ async def join(sid, data):
             },
             room=room,
         )
+
     return {"success": True}
 
 
@@ -789,18 +819,19 @@ async def send_push_to_room(room: str, sender: str, text: str):
 
 
 async def send_fcm_to_room(room: str, sender: str, text: str):
+    if room in DESTROYED_ROOMS:
+        print(f"⛔ Skipping FCM: Room {room} is destroyed.")
+        return
+
     now = datetime.now(timezone.utc)
 
-    for user, tokens in list(FCM_TOKENS.items()):
+    for user, rooms in list(FCM_TOKENS.items()):
         if user == sender:
             continue
-        if user_active_foreground(user):
+        if room not in rooms:
             continue
 
-        if isinstance(tokens, str):
-            tokens = [tokens]
-
-        for token in tokens:
+        for token in list(rooms[room]):
             try:
                 msg = messaging.Message(
                     notification=messaging.Notification(
@@ -831,10 +862,10 @@ async def send_fcm(request: Request):
     if not user or user not in FCM_TOKENS:
         return JSONResponse({"error": "invalid user"}, status_code=400)
 
-    # Ensure tokens are always a list
-    tokens = FCM_TOKENS[user]
-    if isinstance(tokens, str):
-        tokens = [tokens]
+    # 🔑 Collect all tokens across rooms for this user
+    tokens = []
+    for room_tokens in FCM_TOKENS[user].values():
+        tokens.extend(room_tokens)
 
     results = []
     for token in tokens:
@@ -854,26 +885,27 @@ async def send_fcm(request: Request):
     return {"status": "done", "results": results}
 
 
-@app.post("/api/register-fcm")
-async def register_fcm(request: Request):
+@app.post("/api/unregister-fcm")
+async def unregister_fcm(request: Request):
     body = await request.json()
     token = body.get("token")
     user = body.get("user")
+    room = body.get("room")
 
-    if not token or not user:
-        return JSONResponse({"error": "user + token required"}, status_code=400)
+    if not token or not user or not room:
+        return JSONResponse({"error": "user + token + room required"}, status_code=400)
 
-    save_fcm_token(user, token)
+    if user in FCM_TOKENS and room in FCM_TOKENS[user]:
+        if token in FCM_TOKENS[user][room]:
+            FCM_TOKENS[user][room].remove(token)
+            print(f"🛑 Token removed for {user} in room {room}")
 
-    # ensure always list
-    if user not in FCM_TOKENS:
-        FCM_TOKENS[user] = []
-    if token not in FCM_TOKENS[user]:
-        FCM_TOKENS[user].append(token)
+        # cleanup
+        if not FCM_TOKENS[user][room]:
+            del FCM_TOKENS[user][room]
+        if not FCM_TOKENS[user]:
+            del FCM_TOKENS[user]
 
-    print(
-        f"✅ FCM token saved for {user} (persisted in DB, total={len(FCM_TOKENS[user])})"
-    )
     return {"status": "ok"}
 
 
