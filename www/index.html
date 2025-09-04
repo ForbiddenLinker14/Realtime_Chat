@@ -29,24 +29,41 @@
     html,
     body {
       height: 100%;
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: #100e09;
-      color: #eaeaea;
-      display: flex;
-      height: 100vh;
-      overflow: auto;
-
-      /* Hide scrollbar cross-browser */
+      /* Hide scrollbar (cross-browser) */
       scrollbar-width: none;
       /* Firefox */
       -ms-overflow-style: none;
       /* IE/Edge */
     }
 
-    html::-webkit-scrollbar,
-    body::-webkit-scrollbar {
+    html::-webkit-scrollbar {
       display: none;
+      /* Chrome, Safari, Opera */
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      /* lock app to viewport */
+      overflow: auto;
+      /* page itself never scrolls on desktop */
+      background: #100e09;
+      color: #eaeaea;
+      /* Hide scrollbar (cross-browser) */
+      scrollbar-width: none;
+      /* Firefox */
+      -ms-overflow-style: none;
+      /* IE/Edge */
+    }
+
+    /* Landing page wrapper (intro + footer) */
+    #intro-wrapper {
+      max-width: 1000px;
+      margin: auto;
+      padding: 20px;
+      line-height: 1.6;
     }
 
     /* Sidebar */
@@ -57,18 +74,22 @@
       border-right: 1px solid #333;
       box-sizing: border-box;
       transition: transform .4s ease-in-out;
+      position: relative;
+      z-index: 2;
+      color: #eaeaea;
+
       display: flex;
       flex-direction: column;
       height: 100vh;
-      z-index: 2;
+      /* fixed column height */
     }
 
     #sidebar.hidden {
       position: absolute;
-      top: 0;
       left: 0;
-      transform: translateX(-100%);
+      top: 0;
       height: 100%;
+      transform: translateX(-100%);
     }
 
     #sidebar input[type="text"] {
@@ -85,17 +106,17 @@
     }
 
     #sidebar input[type="text"]::placeholder {
-      color: #888;
+      color: #888
     }
 
     #sidebar input[type="text"]:hover {
-      background: linear-gradient(145deg, #1c1c1c, #2a2a2a);
+      background: linear-gradient(145deg, #1c1c1c, #2a2a2a)
     }
 
     #sidebar input[type="text"]:focus {
       outline: none;
       background: linear-gradient(145deg, #222, #333);
-      box-shadow: 0 0 6px #25d366, inset 2px 2px 6px rgba(0, 0, 0, .7);
+      box-shadow: 0 0 6px #25d366, inset 2px 2px 6px rgba(0, 0, 0, .7)
     }
 
     /* Chat container */
@@ -105,9 +126,11 @@
       flex-direction: column;
       background: #100e09;
       min-height: 0;
+      /* overflow: hidden; */
+      /* allow internal scrollers */
     }
 
-    /* Toggle arrows */
+    /* Arrows */
     #show-arrow,
     #toggle-arrow {
       font-size: 18px;
@@ -148,8 +171,11 @@
       background: #100e09;
       scroll-behavior: smooth;
       -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
       min-height: 0;
       overscroll-behavior: contain;
+      /* wheel doesn’t bubble to page */
     }
 
     #messages::-webkit-scrollbar {
@@ -180,12 +206,14 @@
     }
 
     .msg.system {
+      display: block;
       width: 100% !important;
       max-width: 100% !important;
       text-align: center;
       color: #aaa;
       font-style: italic;
       margin: 10px 0;
+      box-sizing: border-box;
     }
 
     /* Input area */
@@ -208,16 +236,12 @@
       color: #777;
     }
 
-    #attach,
-    #send {
-      border: none;
-      cursor: pointer;
-    }
-
     #attach {
       padding: 10px 15px;
+      border: none;
       background: #2c3e50;
       color: white;
+      cursor: pointer;
       font-size: 18px;
     }
 
@@ -227,8 +251,10 @@
 
     #send {
       padding: 10px 20px;
+      border: none;
       background: #27ae60;
       color: white;
+      cursor: pointer;
       font-size: 16px;
     }
 
@@ -247,7 +273,7 @@
     }
 
     #sidebar button:hover {
-      opacity: .9;
+      opacity: .9
     }
 
     #sidebar button:nth-child(3) {
@@ -265,7 +291,44 @@
       color: #fff;
     }
 
-    /* Users Panel */
+    .username {
+      font-weight: bold;
+      margin-bottom: 4px;
+    }
+
+    .image-wrapper {
+      position: relative;
+      display: inline-block;
+    }
+
+    .image-wrapper img {
+      max-width: 220px;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .download-icon {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      background: rgba(0, 0, 0, .5);
+      padding: 4px;
+      border-radius: 4px;
+      text-decoration: none;
+      color: white;
+    }
+
+    .download-icon:hover {
+      background: rgba(0, 179, 84, .7);
+    }
+
+    .timestamp {
+      font-size: 12px;
+      color: #ccc;
+      margin-top: 4px;
+    }
+
+    /* ===== Users panel & list (critical) ===== */
     #users-title {
       font-size: 16px;
       font-weight: bold;
@@ -279,14 +342,19 @@
       display: flex;
       flex-direction: column;
       flex: 1;
+      /* always expand in sidebar */
       min-height: 0;
+      /* allow user-list to shrink/scroll */
     }
 
     #user-list {
       flex: 1;
       min-height: 0;
+      /* 👈 critical fix */
       overflow-y: auto;
+      /* list scrolls, not body */
       overscroll-behavior: contain;
+
       list-style: none;
       padding: 0;
       margin: 0;
@@ -295,13 +363,19 @@
       border-radius: 12px;
       box-shadow: 0 2px 6px rgba(0, 0, 0, .5);
 
-      /* Hide scrollbar */
+      scrollbar-width: thin;
+      scrollbar-color: #4b5563 #1a1813;
+
+      /* HIDE scrollbar but keep scroll */
       scrollbar-width: none;
+      /* Firefox */
       -ms-overflow-style: none;
+      /* IE/Edge */
     }
 
     #user-list::-webkit-scrollbar {
       display: none;
+      /* Chrome, Safari */
     }
 
     #user-list li {
@@ -353,7 +427,26 @@
       }
     }
 
-    /* Responsive */
+    #user-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #user-list::-webkit-scrollbar-track {
+      background: #1a1813;
+      border-radius: 10px;
+    }
+
+    #user-list::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 10px;
+      border: 1px solid #1a1813;
+    }
+
+    #user-list::-webkit-scrollbar-thumb:hover {
+      background: #6b7280;
+    }
+
+    /* Responsive mobile */
     @media (max-width:768px) {
       body {
         flex-direction: column;
@@ -362,11 +455,12 @@
 
       #sidebar {
         width: 100%;
-        height: auto;
         border-right: none;
         border-bottom: 1px solid #333;
+        height: auto;
       }
 
+      /* Force list height cap on mobile */
       #users-panel {
         flex: none;
         max-height: 200px;
@@ -378,17 +472,24 @@
       }
     }
 
-    /* Gradient title */
+    /* Gradient text title */
     .chat-title {
       font-size: 1.2em;
       cursor: pointer;
       display: inline-block;
       color: #43e97b;
+      /* initial solid green */
       transition: color 0.3s ease;
     }
 
+    /* On hover: switch to gradient shimmer */
     .chat-title:hover {
-      background: linear-gradient(90deg, #4facfe, #00f2fe, #43e97b, #38f9d7, #4facfe);
+      background: linear-gradient(90deg,
+          #4facfe,
+          #00f2fe,
+          #43e97b,
+          #38f9d7,
+          #4facfe);
       background-size: 300% auto;
       background-clip: text;
       -webkit-background-clip: text;
@@ -406,22 +507,25 @@
       }
     }
 
-    /* Hide initially */
+    /* Add this CSS to hide elements immediately */
     #chat-container,
     #input-area,
     #messages {
       display: none;
     }
 
+    /* Show intro by default */
     #intro {
       display: block;
     }
 
+    /*after join flick fix */
     #intro,
     #chat-container,
     #input-area,
     #messages {
       display: none;
+      /* all hidden until JS decides */
     }
   </style>
 </head>
@@ -1036,4 +1140,5 @@
   </script>
 
 </body>
+
 </html>
