@@ -1064,26 +1064,40 @@
       }
     }
 
-    async function clearRoom() {
+    const API_BASE = "https://realtime-chat-1mv3.onrender.com";
+
+    // expose globally (important for Android WebView buttons)
+    window.clearRoom = async function clearRoom() {
       if (!currentRoom) {
         alert("Join a room first!");
         return;
       }
 
       try {
-        const res = await fetch(`/clear/${encodeURIComponent(currentRoom)}`, {
+        const res = await fetch(`${API_BASE}/clear/${encodeURIComponent(currentRoom)}`, {
           method: "DELETE",
+          headers: { "Content-Type": "application/json" }, // Android fix
           cache: "no-store"
         });
 
-        if (!res.ok) throw new Error(`Failed to clear room: ${res.status} ${await res.text()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Failed to clear room: ${res.status}`);
+
+        console.log("✅", data.message);
+
+        // Optional feedback
+        addMessage({
+          sender: "System",
+          text: data.message,
+          ts: new Date().toISOString()
+        });
       } catch (err) {
-        console.error(err);
+        console.error("❌ clearRoom error:", err);
         alert(err.message);
       }
-    }
+    };
 
-    async function destroyRoom() {
+    window.destroyRoom = async function destroyRoom() {
       if (!currentRoom) {
         alert("Join a room first!");
         return;
@@ -1091,26 +1105,40 @@
 
       if (!confirm(`Are you sure you want to destroy room "${currentRoom}"?`)) return;
 
-      await fetch(`/destroy/${encodeURIComponent(currentRoom)}`, { method: "DELETE" });
-      document.getElementById("messages").innerHTML = "";
+      try {
+        const res = await fetch(`${API_BASE}/destroy/${encodeURIComponent(currentRoom)}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" } // Android fix
+        });
 
-      addMessage({
-        sender: "System",
-        text: "Room destroyed. All messages cleared. You cannot send messages until you join a new room.",
-        ts: new Date().toISOString()
-      });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Failed to destroy room: ${res.status}`);
 
-      lastPersistedTs = null;
-      Storage.remove("chat_name");
-      Storage.remove("chat_room");
-      joinedRooms.delete(currentRoom);
-      currentRoom = "";
-      document.getElementById("user-list").innerHTML = "";
-      document.getElementById("chat-container").style.display = "none";
-      document.getElementById("input-area").style.display = "none";
-      document.getElementById("intro").style.display = "block";
-      document.getElementById("messages").style.display = "none";
-    }
+        console.log("✅", data.message);
+
+        // reset UI
+        document.getElementById("messages").innerHTML = "";
+        addMessage({
+          sender: "System",
+          text: "Room destroyed. All messages cleared. Please join a new room.",
+          ts: new Date().toISOString()
+        });
+
+        lastPersistedTs = null;
+        Storage.remove("chat_name");
+        Storage.remove("chat_room");
+        joinedRooms.delete(currentRoom);
+        currentRoom = "";
+        document.getElementById("user-list").innerHTML = "";
+        document.getElementById("chat-container").style.display = "none";
+        document.getElementById("input-area").style.display = "none";
+        document.getElementById("intro").style.display = "block";
+        document.getElementById("messages").style.display = "none";
+      } catch (err) {
+        console.error("❌ destroyRoom error:", err);
+        alert(err.message);
+      }
+    };
 
     function leaveRoom() {
       if (!currentRoom) {
