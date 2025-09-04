@@ -307,19 +307,39 @@ def user_active_foreground(username: str) -> bool:
 # ---------------- REST: admin-ish ----------------
 @app.delete("/clear/{room}")
 async def clear_messages(room: str):
-    clear_room(room)
+    """
+    Clear chat history for a specific room.
+    """
+    clear_room(room)  # delete all messages from DB
+
+    # Notify everyone in the room
     await sio.emit(
         "clear", {"room": room, "message": "Room history cleared."}, room=room
     )
+
+    print(f"🧹 Room {room} history cleared.")
     return JSONResponse({"status": "ok", "message": f"Room {room} cleared."})
 
 
 @app.delete("/destroy/{room}")
 async def destroy_room(room: str):
+    """
+    Destroy a room completely:
+    - Clears its DB messages
+    - Removes it from memory
+    - Kicks all users
+    """
+    # 1. Clear DB
     clear_room(room)
+
+    # 2. Mark as destroyed (so old data won’t reappear)
     DESTROYED_ROOMS.add(room)
+
+    # 3. Remove from in-memory user mapping
     if room in ROOM_USERS:
         del ROOM_USERS[room]
+
+    # 4. Notify clients
     await sio.emit(
         "clear",
         {"room": room, "message": "Room destroyed. All messages cleared."},
@@ -327,11 +347,14 @@ async def destroy_room(room: str):
     )
     await sio.emit("room_destroyed", {"room": room}, room=room)
 
+    # 5. Force all sids to leave the room
     namespace = "/"
     if namespace in sio.manager.rooms and room in sio.manager.rooms[namespace]:
         sids = list(sio.manager.rooms[namespace][room])
         for sid in sids:
             await sio.leave_room(sid, room, namespace=namespace)
+
+    print(f"💥 Room {room} destroyed.")
     return JSONResponse({"status": "ok", "message": f"Room {room} destroyed."})
 
 
@@ -674,9 +697,6 @@ async def subscribe(request: Request):
 #             except WebPushException as e:
 #                 print(f"❌ Push failed for {user}: {e}")
 #     return {"status": "ok"}
-
-
-from firebase_admin import messaging
 
 
 @app.post("/send-push-notification")
