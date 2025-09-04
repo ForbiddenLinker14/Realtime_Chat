@@ -890,7 +890,7 @@
       });
 
       // 👉 Subscribe user when joining room (not when sending message)
-      subscribeUser(currentName).catch(err =>
+      subscribeUser(currentName, currentRoom).catch(err =>
         console.warn("⚠️ Subscription failed in joinRoom:", err)
       );
 
