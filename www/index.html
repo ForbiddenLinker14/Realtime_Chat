@@ -734,7 +734,7 @@
       if (!subscription) {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
         });
         console.log("📌 New subscription created:", JSON.stringify(subscription));
       } else {
@@ -745,14 +745,14 @@
 
       const body = {
         sender: sender || "anonymous",
-        room: room || null,   // 👈 now includes room info
-        subscription: subscription.toJSON()
+        room: room || null,
+        subscription: subscription.toJSON(),
       };
 
       const response = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       });
 
       const result = await response.json();
@@ -772,7 +772,7 @@
         await fetch("/api/unsubscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sender, room, subscription })
+          body: JSON.stringify({ sender, room, subscription }),
         });
 
         console.log(`🛑 Unsubscribed ${sender} from room ${room}`);
@@ -1340,15 +1340,15 @@
         console.log("📱 Push registration token:", token.value);
 
         try {
+          const user = localStorage.getItem("chat_name") || "guest";
+
           await fetch("https://realtime-chat-1mv3.onrender.com/api/register-fcm", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              token: token.value,
-              user: localStorage.getItem("username") || "guest"
-            })
+            body: JSON.stringify({ token: token.value, user })
           });
-          console.log("📡 Token sent to backend");
+
+          console.log("📡 Token sent to backend for", user);
         } catch (err) {
           console.error("❌ Failed to send token:", err);
         }
@@ -1360,12 +1360,6 @@
       });
 
       // Foreground push
-      PushNotifications.addListener(
-        "pushNotificationReceived",
-        (notification) => {
-          console.log("📩 Push received:", notification);
-        }
-      );
 
       // Notification tapped
       PushNotifications.addListener(
@@ -1386,6 +1380,27 @@
       };
     });
   </script>
+  <script type="module">
+    import { LocalNotifications } from '@capacitor/local-notifications';
+    import { PushNotifications } from '@capacitor/push-notifications';
+
+    // all your chat + push code (your existing functions, joinRoom, leaveRoom, subscribeUser, etc.)
+
+    // Foreground push → show banner even when app is open
+    PushNotifications.addListener('pushNotificationReceived', async (n) => {
+      console.log("📩 Push received (foreground):", n);
+
+      await LocalNotifications.schedule({
+        notifications: [{
+          id: Date.now(),
+          title: n.title || 'Realtime Chat',
+          body: n.body || `${(n.data?.sender) || ''}: ${(n.data?.message) || ''}`,
+          extra: n.data || {}
+        }]
+      });
+    });
+  </script>
+
 
 </body>
 
