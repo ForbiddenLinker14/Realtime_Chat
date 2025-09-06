@@ -883,27 +883,27 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
         if room not in rooms:
             continue
 
-        # 🚨 Skip push if user is active (foreground)
-        if user_active_foreground(user):
-            print(f"🟢 Skipping FCM for {user} (active in foreground)")
-            continue
-
         for token in list(rooms[room]):
             try:
-                msg = messaging.Message(
+                sg = messaging.Message(
+                    notification=messaging.Notification(
+                        title=f"Room {room}", body=f"{sender}: {text}"
+                    ),
+                    android=messaging.AndroidConfig(
+                        priority="high",
+                        notification=messaging.AndroidNotification(
+                            channel_id="chat_messages",  # 👈 must exist on device
+                            sound="default",
+                            priority="high",
+                        ),
+                    ),
                     token=token,
-                    data={  # ✅ only data payload
+                    data={
                         "room": room,
                         "sender": sender,
                         "message": text,
                         "timestamp": now.isoformat(),
                     },
-                    android=messaging.AndroidConfig(
-                        priority="high",
-                        notification=messaging.AndroidNotification(
-                            channel_id="chat_messages", sound="default", priority="high"
-                        ),
-                    ),
                 )
                 response = messaging.send(msg)
                 print(f"📲 FCM sent to {user}: {response}")
