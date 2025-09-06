@@ -823,6 +823,14 @@ async def send_push_to_room(room: str, sender: str, text: str):
     push_id = make_push_id(room, sender, text, payload["timestamp"])
 
     for user, subs in list(subscriptions[room].items()):
+        # skip sender
+        if user == sender:
+            continue
+
+        # skip if user is active in foreground
+        if user_active_foreground(user):
+            continue
+
         for sub in list(subs):
             try:
                 endpoint = normalize_endpoint(sub.get("endpoint"))
@@ -833,24 +841,18 @@ async def send_push_to_room(room: str, sender: str, text: str):
                 if not should_send_push(endpoint, push_id, now):
                     continue
 
-                # optional: skip sender
-                if user == sender:
-                    continue
-
                 webpush(
                     subscription_info=sub,
                     data=json.dumps(payload),
                     vapid_private_key=VAPID_PRIVATE_KEY,
-                    vapid_claims={
-                        "sub": "mailto:anitsaha976@gmail.com"
-                    },  # or your domain URL
+                    vapid_claims={"sub": "mailto:anitsaha976@gmail.com"},
                 )
                 print(f"🌍 WebPush sent to {user} in {room}")
 
             except WebPushException as e:
                 print(f"❌ WebPush failed for {user}: {e}")
 
-                # 🔑 Auto-cleanup expired/invalid subscriptions
+                # auto-cleanup expired/invalid subscriptions
                 if "410" in str(e) or "404" in str(e):
                     subs_for_room = subscriptions.get(room, {}).get(user, [])
                     subs_for_room = [
@@ -883,19 +885,15 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
         if room not in rooms:
             continue
 
+        # skip if user is active in foreground
+        if user_active_foreground(user):
+            continue
+
         for token in list(rooms[room]):
             try:
                 msg = messaging.Message(
                     notification=messaging.Notification(
                         title=f"Room {room}", body=f"{sender}: {text}"
-                    ),
-                    android=messaging.AndroidConfig(
-                        priority="high",
-                        notification=messaging.AndroidNotification(
-                            channel_id="chat_messages",  # 👈 must exist on device
-                            sound="default",
-                            priority="high",
-                        ),
                     ),
                     token=token,
                     data={
