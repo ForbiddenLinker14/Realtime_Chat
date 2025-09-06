@@ -892,9 +892,9 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
         for token in list(rooms[room]):
             try:
                 msg = messaging.Message(
-                    notification=messaging.Notification(
-                        title=f"Room {room}", body=f"{sender}: {text}"
-                    ),
+                    # notification=messaging.Notification(
+                    #     title=f"Room {room}", body=f"{sender}: {text}"
+                    # ),
                     token=token,
                     data={
                         "room": room,
