@@ -902,6 +902,14 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
                         "message": text,
                         "timestamp": now.isoformat(),
                     },
+                    android=messaging.AndroidConfig(
+                        priority="high",
+                        notification=messaging.AndroidNotification(
+                            channel_id="chat_messages",  # 👈 must exist on device
+                            sound="default",
+                            priority="high",
+                        ),
+                    ),
                 )
                 response = messaging.send(msg)
                 print(f"📲 FCM sent to {user}: {response}")
