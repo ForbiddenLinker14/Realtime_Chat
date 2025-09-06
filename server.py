@@ -889,6 +889,16 @@ async def send_fcm_to_room(room: str, sender: str, text: str):
                     notification=messaging.Notification(
                         title=f"Room {room}", body=f"{sender}: {text}"
                     ),
+
+                    android=messaging.AndroidConfig(
+                        priority="high",
+                        notification=messaging.AndroidNotification(
+                            channel_id="chat_messages",  # 👈 must exist on device
+                            sound="default",
+                            priority="high"
+                        )
+                    ),
+
                     token=token,
                     data={
                         "room": room,
